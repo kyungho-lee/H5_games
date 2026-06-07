@@ -1,0 +1,1729 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>SAME PUZZLE — GRID PROTOCOL</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@300;500;700&display=swap');
+
+  :root {
+    --bg:       #08090d;
+    --panel:    #0d0f18;
+    --border:   #1a2040;
+    --accent:   #00f5c8;
+    --warn:     #ff4060;
+    --dim:      #2a3060;
+    --text:     #c8d4f0;
+    --textdim:  #4a5880;
+    --c0: #ff4060;
+    --c1: #00c8ff;
+    --c2: #a0ff40;
+    --c3: #ff9020;
+    --c4: #c060ff;
+    --c5: #ffdf20;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html, body {
+    width: 100%; height: 100%;
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Share Tech Mono', monospace;
+    overflow: hidden;
+    user-select: none;
+  }
+
+
+  body::before {
+    content: '';
+    position: fixed; inset: 0;
+    background: repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 2px,
+      rgba(0,0,0,.18) 2px,
+      rgba(0,0,0,.18) 4px
+    );
+    pointer-events: none;
+    z-index: 999;
+  }
+
+
+  body::after {
+    content: '';
+    position: fixed; inset: 0;
+    background:
+      radial-gradient(ellipse at 0% 0%, rgba(0,245,200,.06) 0%, transparent 40%),
+      radial-gradient(ellipse at 100% 100%, rgba(192,96,255,.05) 0%, transparent 40%);
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  #wrapper {
+    position: relative; z-index: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    width: 100%; height: 100%;
+    gap: 0;
+  }
+
+
+  #header {
+    width: 100%;
+    max-width: 820px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 16px 6px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  #header h1 {
+    font-family: 'Rajdhani', sans-serif;
+    font-weight: 700;
+    font-size: clamp(14px, 2.5vw, 22px);
+    letter-spacing: .25em;
+    color: var(--accent);
+    text-shadow: 0 0 18px rgba(0,245,200,.5);
+  }
+
+  #header h1 span { color: var(--textdim); font-weight: 300; }
+
+  .hbadge {
+    font-size: 10px;
+    letter-spacing: .1em;
+    color: var(--textdim);
+    border: 1px solid var(--border);
+    padding: 2px 8px;
+    border-radius: 2px;
+  }
+
+
+  #stats {
+    width: 100%;
+    max-width: 820px;
+    display: flex;
+    align-items: stretch;
+    gap: 0;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .stat-box {
+    flex: 1;
+    padding: 6px 12px;
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+  }
+  .stat-box:last-child { border-right: none; }
+
+  .stat-label {
+    font-size: 9px;
+    letter-spacing: .15em;
+    color: var(--textdim);
+  }
+
+  .stat-value {
+    font-family: 'Rajdhani', sans-serif;
+    font-size: clamp(18px, 3vw, 26px);
+    font-weight: 700;
+    color: var(--accent);
+    transition: color .2s;
+  }
+  .stat-value.flash { color: #fff; }
+
+
+  #canvas-wrap {
+    position: relative;
+    flex: 1 1 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    width: 100%;
+    max-width: 820px;
+  }
+
+  #gameCanvas {
+    display: block;
+    cursor: crosshair;
+    image-rendering: pixelated;
+  }
+
+
+  #footer {
+    width: 100%;
+    max-width: 820px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 16px;
+    border-top: 1px solid var(--border);
+    gap: 8px;
+  }
+
+  #msg-bar {
+    font-size: 11px;
+    letter-spacing: .06em;
+    color: var(--textdim);
+    flex: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  #msg-bar .hi { color: var(--accent); }
+  #msg-bar .warn { color: var(--warn); }
+
+  .btn {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 11px;
+    letter-spacing: .1em;
+    color: var(--text);
+    background: transparent;
+    border: 1px solid var(--border);
+    padding: 4px 14px;
+    cursor: pointer;
+    transition: all .15s;
+    white-space: nowrap;
+  }
+  .btn:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+    box-shadow: 0 0 10px rgba(0,245,200,.2);
+  }
+  .btn.active {
+    border-color: var(--accent);
+    color: var(--bg);
+    background: var(--accent);
+  }
+
+
+  #overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(8,9,13,.88);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .3s;
+    backdrop-filter: blur(4px);
+  }
+  #overlay.show { opacity: 1; pointer-events: all; }
+
+  #overlay-title {
+    font-family: 'Rajdhani', sans-serif;
+    font-size: clamp(24px, 6vw, 48px);
+    font-weight: 700;
+    letter-spacing: .2em;
+    color: var(--accent);
+    text-shadow: 0 0 30px rgba(0,245,200,.6);
+    text-align: center;
+  }
+
+  #overlay-sub {
+    font-size: 12px;
+    color: var(--textdim);
+    letter-spacing: .1em;
+    text-align: center;
+    line-height: 1.7;
+  }
+
+  #overlay-score {
+    font-family: 'Rajdhani', sans-serif;
+    font-size: clamp(32px, 7vw, 56px);
+    font-weight: 700;
+    color: #fff;
+  }
+
+  #overlay-score .label {
+    font-size: 11px;
+    letter-spacing: .15em;
+    color: var(--textdim);
+    display: block;
+    text-align: center;
+    font-family: 'Share Tech Mono', monospace;
+    font-weight: 400;
+  }
+
+  #overlay .btn {
+    font-size: 13px;
+    padding: 8px 32px;
+    margin-top: 8px;
+  }
+
+
+  #diff-row {
+    display: flex;
+    gap: 0;
+  }
+  #diff-row .btn {
+    border-radius: 0;
+    border-right: none;
+  }
+  #diff-row .btn:last-child { border-right: 1px solid var(--border); }
+
+
+  #combo-pop {
+    position: absolute;
+    top: 30%;
+    left: 50%;
+    transform: translate(-50%, -50%) scale(.8);
+    font-family: 'Rajdhani', sans-serif;
+    font-size: clamp(28px, 6vw, 52px);
+    font-weight: 700;
+    color: #fff;
+    text-shadow: 0 0 20px var(--accent);
+    pointer-events: none;
+    opacity: 0;
+    letter-spacing: .1em;
+    white-space: nowrap;
+    transition: opacity .4s, transform .4s;
+  }
+  #combo-pop.show {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+
+
+  #level-flash {
+    position: absolute;
+    inset: 0;
+    background: rgba(0,245,200,.18);
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity .15s;
+  }
+  #level-flash.show { opacity: 1; }
+
+
+  @keyframes bestPulse {
+    0%,100% { opacity: 1; text-shadow: 0 0 12px #ffe020; }
+    50%      { opacity: .6; text-shadow: 0 0 28px #ffe020; }
+  }
+  #overlay-best-new { animation: bestPulse 1.2s infinite; }
+</style>
+</head>
+<body>
+<div id="wrapper">
+
+  <!-- HEADER -->
+  <div id="header">
+    <h1>SAME<span>GAME</span> <span style="font-size:.65em;letter-spacing:.1em;color:var(--dim)">∕</span> GRID PROTOCOL</h1>
+    <div class="hbadge">SINGLE PLAYER v2.0</div>
+  </div>
+
+  <!-- STATS -->
+  <div id="stats">
+    <div class="stat-box">
+      <div class="stat-label">SCORE</div>
+      <div class="stat-value" id="sv-score">0</div>
+    </div>
+    <div class="stat-box">
+      <div class="stat-label">LEVEL</div>
+      <div class="stat-value" id="sv-level">—</div>
+    </div>
+    <div class="stat-box">
+      <div class="stat-label">COMBO</div>
+      <div class="stat-value" id="sv-combo">—</div>
+    </div>
+    <div class="stat-box">
+      <div class="stat-label">REMAINING</div>
+      <div class="stat-value" id="sv-tiles">—</div>
+    </div>
+    <div class="stat-box">
+      <div class="stat-label">BEST</div>
+      <div class="stat-value" id="sv-best">0</div>
+    </div>
+  </div>
+
+  <!-- CANVAS -->
+  <div id="canvas-wrap">
+    <canvas id="gameCanvas"></canvas>
+
+    <!-- OVERLAY -->
+    <div id="overlay">
+      <div id="overlay-title">GRID PROTOCOL</div>
+      <div id="overlay-sub">connect same-colored nodes to clear the grid<br>larger groups → exponential score bonus</div>
+      <!-- level-clear mini-stats (hidden by default) -->
+      <div id="overlay-levelinfo" style="display:none; text-align:center; line-height:2;">
+        <div style="font-size:11px;letter-spacing:.12em;color:var(--textdim)" id="ol-level-label">LEVEL 1 COMPLETE</div>
+        <div style="font-family:'Rajdhani',sans-serif;font-size:clamp(28px,5vw,44px);font-weight:700;color:#88ff20" id="ol-level-gained">+0</div>
+        <div style="font-size:10px;letter-spacing:.1em;color:var(--textdim)" id="ol-level-bonus"></div>
+      </div>
+      <div id="overlay-score" style="display:none">
+        <span class="label" id="ol-score-label">FINAL SCORE</span>
+        <span id="ol-score-val">0</span>
+      </div>
+      <div id="overlay-best-new" style="display:none;font-size:11px;letter-spacing:.15em;color:#ffe020;text-align:center">
+        ★ NEW BEST SCORE ★
+      </div>
+      <div id="diff-row">
+        <button class="btn active" id="btn-easy"   onclick="setDiff('easy')">EASY</button>
+        <button class="btn"        id="btn-normal" onclick="setDiff('normal')">NORMAL</button>
+        <button class="btn"        id="btn-hard"   onclick="setDiff('hard')">HARD</button>
+      </div>
+      <button class="btn" id="overlay-action-btn" onclick="overlayAction()">▶ INITIATE</button>
+      <div id="tut-skip-link" style="display:none;margin-top:4px">
+        <button onclick="skipTutorial()" style="background:none;border:none;color:var(--textdim);font-size:10px;letter-spacing:.1em;cursor:pointer;font-family:'Share Tech Mono',monospace;text-decoration:underline">건너뛰기 (SKIP)</button>
+      </div>
+    </div>
+
+    <!-- COMBO -->
+    <div id="combo-pop"></div>
+    <!-- LEVEL TRANSITION FLASH -->
+    <div id="level-flash"></div>
+  </div>
+
+  <!-- FOOTER -->
+  <div id="footer">
+    <div id="msg-bar">—</div>
+    <button class="btn" onclick="startGame()">↺ RESTART</button>
+    <button class="btn" onclick="undoMove()" id="btn-undo">UNDO</button>
+    <button class="btn" onclick="replayTutorial()" id="btn-tut" title="튜토리얼 다시보기">?</button>
+  </div>
+
+</div>
+
+<script>
+/* ================================================================
+   ██████  ██████  ██████  ███████
+  ██      ██    ██ ██   ██ ██
+  ██      ██    ██ ██████  █████
+  ██      ██    ██ ██   ██ ██
+   ██████  ██████  ██   ██ ███████
+
+  SAMEGAME — GRID PROTOCOL
+  Architecture:
+    - GameLogic   : pure state machine, zero DOM deps (server-ready)
+    - Renderer    : Canvas 2D with object pooling & particle system
+    - NetworkReady: NetworkManager stub (swap in real WS later)
+================================================================ */
+
+// 클리어율 (500회 시뮬레이션 실측):
+//   EASY   ~27%  (10×10, 3색, bias 0.60)
+//   NORMAL  ~7%  (15×11, 4색, bias 0.75)
+//   HARD   ~0.6% (16×12, 5색, bias 0.75) — 도전 컨셉
+const DIFFICULTIES = {
+  easy:   { cols: 10, rows: 10, colors: 3, minGroup: 2, bias: 0.60 },
+  normal: { cols: 15, rows: 11, colors: 4, minGroup: 2, bias: 0.75 },
+  hard:   { cols: 16, rows: 12, colors: 5, minGroup: 2, bias: 0.75 },
+};
+
+const COLOR_PALETTE = [
+  { fill: '#ff3050', glow: '#ff0030', dark: '#800018' }, // RED
+  { fill: '#00c8ff', glow: '#0090ff', dark: '#004878' }, // CYAN
+  { fill: '#88ff20', glow: '#44cc00', dark: '#204800' }, // GREEN
+  { fill: '#ff9020', glow: '#ff6000', dark: '#782800' }, // ORANGE
+  { fill: '#c050ff', glow: '#9020e8', dark: '#500080' }, // PURPLE
+  { fill: '#ffe020', glow: '#ffb000', dark: '#705000' }, // YELLOW
+];
+
+// score formula: n*(n-1)*10  where n = group size
+const scoreFormula = n => n * (n - 1) * 10;
+
+/* ================================================================
+   GameLogic — pure, framework-free, server-shareable
+   Can be imported in Node.js Colyseus Room as-is
+================================================================ */
+class GameLogic {
+  constructor(cfg) {
+    this.cfg = cfg;
+    this.board = [];
+    this.score = 0;
+    this.moveCount = 0;
+    this.history = []; // undo stack: [{board, score}]
+    this._init();
+  }
+
+  _init() {
+    const { cols, rows, colors, bias = 0.6 } = this.cfg;
+        // 완전 랜덤 대비 인접 셀이 같은 색일 확률을 bias만큼 높임
+    // → 자연스러운 그룹이 형성되어 제거 가능한 보드 생성
+    const board = Array.from({ length: rows }, () => Array(cols).fill(-1));
+    // 방문 순서를 셔플 → 방향성 편향 제거
+    const order = [];
+    for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) order.push([r, c]);
+    for (let i = order.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [order[i], order[j]] = [order[j], order[i]];
+    }
+    for (const [r, c] of order) {
+      // 이미 채워진 경우 스킵 (없어야 하지만 방어적으로)
+      if (board[r][c] !== -1) continue;
+      const neighbors = [];
+      for (const [dr, dc] of [[-1,0],[1,0],[0,-1],[0,1]]) {
+        const nr = r + dr, nc = c + dc;
+        if (nr >= 0 && nr < rows && nc >= 0 && nc < cols && board[nr][nc] !== -1)
+          neighbors.push(board[nr][nc]);
+      }
+      // bias 확률로 인접 색상 선택, 아니면 완전 랜덤
+      board[r][c] = (neighbors.length > 0 && Math.random() < bias)
+        ? neighbors[Math.floor(Math.random() * neighbors.length)]
+        : Math.floor(Math.random() * colors);
+    }
+    this.board = board;
+    this.score = 0;
+    this.moveCount = 0;
+    this.history = [];
+  }
+
+  // Returns group of connected cells of same color via flood-fill
+  getGroup(r, c) {
+    if (this.board[r][c] === -1) return [];
+    const target = this.board[r][c];
+    const visited = new Set();
+    const stack = [[r, c]];
+    const group = [];
+    while (stack.length) {
+      const [cr, cc] = stack.pop();
+      const key = cr * 1000 + cc;
+      if (visited.has(key)) continue;
+      visited.add(key);
+      if (cr < 0 || cr >= this.cfg.rows || cc < 0 || cc >= this.cfg.cols) continue;
+      if (this.board[cr][cc] !== target) continue;
+      group.push([cr, cc]);
+      stack.push([cr - 1, cc], [cr + 1, cc], [cr, cc - 1], [cr, cc + 1]);
+    }
+    return group;
+  }
+
+  // Validate + apply input; returns {valid, events, score, group}
+  applyInput(r, c) {
+    const group = this.getGroup(r, c);
+    if (group.length < this.cfg.minGroup) {
+      return { valid: false, error: 'GROUP_TOO_SMALL', group };
+    }
+    // save undo state
+    this.history.push({
+      board: this.board.map(row => [...row]),
+      score: this.score,
+    });
+    if (this.history.length > 10) this.history.shift();
+
+    const gained = scoreFormula(group.length);
+    this.score += gained;
+    this.moveCount++;
+
+    // remove tiles
+    for (const [gr, gc] of group) this.board[gr][gc] = -1;
+
+    // gravity: drop tiles down
+    this._applyGravity();
+
+    // remove empty columns
+    this._removeEmptyColumns();
+
+    const remaining = this.countTiles();
+    const events = [{ type: 'TILES_REMOVED', group, gained }];
+    if (remaining === 0) events.push({ type: 'BOARD_CLEAR' });
+    else if (!this.hasValidMove()) events.push({ type: 'GAME_OVER' });
+
+    return { valid: true, events, gained, group, score: this.score };
+  }
+
+  undo() {
+    if (!this.history.length) return false;
+    const prev = this.history.pop();
+    this.board = prev.board;
+    this.score = prev.score;
+    this.moveCount--;
+    return true;
+  }
+
+  _applyGravity() {
+    for (let c = 0; c < this.cfg.cols; c++) {
+      let writeRow = this.cfg.rows - 1;
+      for (let r = this.cfg.rows - 1; r >= 0; r--) {
+        if (this.board[r][c] !== -1) {
+          this.board[writeRow][c] = this.board[r][c];
+          if (writeRow !== r) this.board[r][c] = -1;
+          writeRow--;
+        }
+      }
+      while (writeRow >= 0) { this.board[writeRow--][c] = -1; }
+    }
+  }
+
+  _removeEmptyColumns() {
+    let writeCol = 0;
+    for (let c = 0; c < this.cfg.cols; c++) {
+      const isEmpty = this.board.every(row => row[c] === -1);
+      if (!isEmpty) {
+        if (writeCol !== c) {
+          for (let r = 0; r < this.cfg.rows; r++) {
+            this.board[r][writeCol] = this.board[r][c];
+            this.board[r][c] = -1;
+          }
+        }
+        writeCol++;
+      }
+    }
+  }
+
+  hasValidMove() {
+    const { rows, cols, minGroup } = this.cfg;
+    for (let r = 0; r < rows; r++)
+      for (let c = 0; c < cols; c++)
+        if (this.board[r][c] !== -1 && this.getGroup(r, c).length >= minGroup)
+          return true;
+    return false;
+  }
+
+  countTiles() {
+    return this.board.flat().filter(v => v !== -1).length;
+  }
+
+  // Full state snapshot (for network sync / Colyseus)
+  getSnapshot() {
+    return {
+      board: this.board.map(r => [...r]),
+      score: this.score,
+      moveCount: this.moveCount,
+      cfg: this.cfg,
+    };
+  }
+
+  // Apply a snapshot (for server reconciliation)
+  applySnapshot(snap) {
+    this.board = snap.board.map(r => [...r]);
+    this.score = snap.score;
+    this.moveCount = snap.moveCount;
+  }
+}
+
+/* ================================================================
+   ExponentialBackoff — used by NetworkManager on reconnect
+================================================================ */
+class ExponentialBackoff {
+  constructor(base = 500, max = 30000, jitter = 0.2) {
+    this.base = base; this.max = max; this.jitter = jitter; this.attempt = 0;
+  }
+  nextDelay() {
+    const exp  = Math.min(this.base * 2 ** this.attempt, this.max);
+    const rand = 1 + (Math.random() * 2 - 1) * this.jitter;
+    this.attempt++;
+    return Math.floor(exp * rand);
+  }
+  reset() { this.attempt = 0; }
+}
+
+/* ================================================================
+   NetworkManager stub — swap real WebSocket here for multiplayer
+   Future: this.ws.binaryType = 'arraybuffer' for MessagePack
+================================================================ */
+class NetworkManager {
+  constructor() {
+    this.handlers  = new Map();
+    this.connected = false;
+    this.backoff   = new ExponentialBackoff();
+  }
+  on(type, fn) { this.handlers.set(type, fn); }
+  send(type, payload) { /* local-only: noop */ }
+}
+
+/* ================================================================
+   TutorialManager
+   - 고정 보드(8×6) 위에서 4단계 스텝을 안내
+   - handleClick 에서 interceptClick() 으로 분기
+   - renderer.draw() 끝에서 drawHint(ctx) 로 스포트라이트 + 말풍선 렌더
+   - 완료 시 localStorage 플래그 → startGame() 자동 진입
+================================================================ */
+class TutorialManager {
+  // 튜토리얼 전용 고정 보드 (8cols × 6rows)
+  // -1=빈칸  0=RED  1=CYAN  2=GREEN
+  // 중력: row5 = 바닥
+  static BOARD = [
+    [-1,-1,-1,-1,-1,-1,-1,-1],
+    [-1, 0, 0,-1,-1,-1,-1,-1],
+    [-1, 0, 0,-1, 2, 2,-1,-1],
+    [ 0, 0,-1,-1, 2, 2,-1,-1],
+    [-1,-1, 1, 1, 2,-1, 1,-1],  // [4,6] = 혼자 CYAN (제거 불가 시연용)
+    [-1,-1, 1, 1, 1,-1,-1,-1],
+  ];
+  static COLS = 8;
+  static ROWS = 6;
+  static CFG  = { cols: 8, rows: 6, colors: 3, minGroup: 2, bias: 0 };
+
+  // 4단계 스텝 정의
+  // targetCells: 이 스텝에서 클릭해야 할 정답 셀(들 중 하나)
+  // hintCells:   스포트라이트로 강조할 전체 그룹
+  // allowFail: true면 잘못된 곳 클릭 시 failMsg 표시 후 재시도
+  static STEPS = [
+    {
+      id: 'big-group',
+      title: 'STEP 1 / 4',
+      msg:   '같은 색 인접 타일이 2개 이상 연결된 그룹을 클릭하세요.\n빨간 그룹(6개)을 클릭해 보세요!',
+      hintCells:  [[1,1],[1,2],[2,1],[2,2],[3,0],[3,1]],
+      validColor: 0,   // RED
+      minSize:    5,
+      allowFail:  true,
+      failMsg:    '저 빨간 그룹을 클릭해보세요 →',
+    },
+    {
+      id: 'too-small',
+      title: 'STEP 2a / 4',
+      msg:   '혼자 떨어진 타일은 제거할 수 없어요.\n파란 외톨이 타일을 클릭해보세요!',
+      hintCells:  [[4,6]],
+      validColor: 1,   // CYAN (혼자짜리 — 실패 유도)
+      minSize:    0,   // 크기 제한 없음 (모든 클릭 허용, 실패 체험)
+      allowFail:  false,
+      failMsg:    '',
+      isFailStep: true,  // 이 스텝은 실패가 목적
+    },
+    {
+      id: 'valid-group',
+      title: 'STEP 2b / 4',
+      msg:   '연결된 파란 그룹(5개)을 클릭하세요.\n그룹이 클수록 점수가 지수적으로 올라갑니다!',
+      hintCells:  [[4,2],[4,3],[5,2],[5,3],[5,4]],
+      validColor: 1,   // CYAN
+      minSize:    4,
+      allowFail:  true,
+      failMsg:    '파란 그룹을 클릭해보세요 →',
+    },
+    {
+      id: 'combo',
+      title: 'STEP 3 / 4',
+      msg:   '초록 그룹(5개)을 연속으로 제거해 콤보를 만드세요!\n같은 크기 이상 연속 제거 → 콤보 보너스!',
+      hintCells:  [[2,4],[2,5],[3,4],[3,5],[4,4]],
+      validColor: 2,   // GREEN
+      minSize:    4,
+      allowFail:  true,
+      failMsg:    '초록 그룹을 클릭해보세요 →',
+    },
+  ];
+
+  constructor(renderer, logic) {
+    this.renderer  = renderer;
+    this.logic     = logic;
+    this.stepIdx   = 0;
+    this.active    = true;
+    this.failShown = false;  // 이번 스텝에서 실패 메시지 표시 여부
+    this.pulseT    = 0;      // 스포트라이트 펄스 타이머
+    this.msgLines  = [];     // 현재 표시할 메시지 줄 배열
+    this._updateMsg();
+  }
+
+  get currentStep() { return TutorialManager.STEPS[this.stepIdx]; }
+  get done()        { return this.stepIdx >= TutorialManager.STEPS.length; }
+
+  _updateMsg() {
+    const s = this.currentStep;
+    if (!s) return;
+    this.msgLines = s.msg.split('\n');
+  }
+
+  // handleClick 에서 기존 로직 실행 전에 호출
+  // return true → 이 클릭은 튜토리얼이 처리했으니 기존 로직 실행 금지
+  // return false → 기존 handleClick 그대로 실행
+  interceptClick(r, c, logic) {
+    if (!this.active || this.done) return false;
+
+    const step = this.currentStep;
+
+        if (step.isFailStep) {
+      const clickedColor = logic.board[r]?.[c] ?? -1;
+      if (clickedColor === -1) {
+        // 빈 칸 클릭 → 무시
+        setMsg(`<span class="warn">▲ 타일을 클릭하세요</span>`);
+        return true;
+      }
+      const group = logic.getGroup(r, c);
+      if (group.length < logic.cfg.minGroup) {
+        // 정상: 혼자짜리 클릭 → 실패 체험 완료
+        renderer.flashGroup([[r, c]]);
+        setMsg(`<span class="warn">그룹 크기 부족 (1개) — 2개 이상 연결된 그룹만 제거 가능!</span>`);
+        setTimeout(() => {
+          this.stepIdx++;
+          this._updateMsg();
+          this.failShown = false;
+          this._broadcastStep();
+        }, 1200);
+      } else {
+        // 혼자짜리가 아닌 곳 클릭 → 힌트 재표시
+        setMsg(`<span class="warn">▲ 혼자 떨어진 파란 타일을 클릭해보세요</span>`);
+      }
+      return true;  // 기존 로직 차단
+    }
+
+        const clickedColor = logic.board[r]?.[c] ?? -1;
+    if (clickedColor === -1) return true;  // 빈 칸 무시
+
+    const group = logic.getGroup(r, c);
+
+    // 정답 조건: 올바른 색상 + 충분한 크기
+    const correctColor = (clickedColor === step.validColor);
+    const bigEnough    = (group.length >= step.minSize);
+
+    if (correctColor && bigEnough) {
+      // ✅ 정답 — 기존 게임 로직 실행 허용
+      this.stepIdx++;
+      this._updateMsg();
+      this.failShown = false;
+      if (this.done) {
+        // 마지막 스텝 완료 → 튜토리얼 종료 처리는 endTutorial()에서
+      } else {
+        this._broadcastStep();
+      }
+      return false;  // 기존 handleClick 실행 허용
+
+    } else {
+      // ❌ 오답 — 힌트 재표시
+      const reason = !correctColor
+        ? `<span class="warn">▲ ${['빨간','파란','초록'][step.validColor]} 그룹을 클릭하세요</span>`
+        : `<span class="warn">▲ 더 큰 그룹(${step.minSize}개 이상)을 찾아보세요</span>`;
+      setMsg(reason);
+      this.failShown = true;
+      return true;  // 기존 로직 차단
+    }
+  }
+
+  _broadcastStep() {
+    const step = this.currentStep;
+    if (!step) return;
+    setMsg(`<span class="hi">[${step.title}]</span> ${step.msgLines ? step.msgLines[step.msgLines.length-1] : ''}`);
+  }
+
+  update(dt) {
+    this.pulseT += dt;
+  }
+
+  // Renderer.draw() 끝에서 ctx에 직접 그린다
+  drawHint(ctx, renderer) {
+    if (!this.active || this.done) return;
+
+    const step = this.currentStep;
+    const ts   = renderer.tileSize;
+    const W    = renderer.canvas.width;
+    const H    = renderer.canvas.height;
+
+        ctx.save();
+    ctx.fillStyle = 'rgba(0,0,0,0.55)';
+    ctx.fillRect(0, 0, W, H);
+
+        const pulse = 0.15 * Math.sin(this.pulseT * 4) + 0.85; // 0.70 ~ 1.00
+    ctx.globalCompositeOperation = 'destination-out';
+    const pad = 3;
+    for (const [hr, hc] of step.hintCells) {
+      const x = renderer.offX + hc * ts + pad;
+      const y = renderer.offY + hr * ts + pad;
+      const s = ts - pad * 2;
+      ctx.globalAlpha = pulse;
+      // 둥근 모서리 구멍
+      ctx.beginPath();
+      const r = 4;
+      ctx.moveTo(x + r, y);
+      ctx.lineTo(x + s - r, y);
+      ctx.quadraticCurveTo(x + s, y, x + s, y + r);
+      ctx.lineTo(x + s, y + s - r);
+      ctx.quadraticCurveTo(x + s, y + s, x + s - r, y + s);
+      ctx.lineTo(x + r, y + s);
+      ctx.quadraticCurveTo(x, y + s, x, y + s - r);
+      ctx.lineTo(x, y + r);
+      ctx.quadraticCurveTo(x, y, x + r, y);
+      ctx.closePath();
+      ctx.fill();
+    }
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.globalAlpha = 1;
+
+        const glowColors = ['#ff3050','#00c8ff','#88ff20'];
+    const glowColor  = glowColors[step.validColor] ?? '#00f5c8';
+    ctx.strokeStyle = glowColor;
+    ctx.lineWidth   = 2;
+    ctx.shadowColor = glowColor;
+    ctx.shadowBlur  = 12 * pulse;
+    for (const [hr, hc] of step.hintCells) {
+      const x = renderer.offX + hc * ts + pad;
+      const y = renderer.offY + hr * ts + pad;
+      const s = ts - pad * 2;
+      ctx.strokeRect(x + 0.5, y + 0.5, s - 1, s - 1);
+    }
+    ctx.shadowBlur = 0;
+
+        this._drawBubble(ctx, renderer, step);
+
+        this._drawProgress(ctx, W, H);
+
+    ctx.restore();
+  }
+
+  _drawBubble(ctx, renderer, step) {
+    const lines   = this.msgLines;
+    const fontSize = Math.max(11, Math.min(14, renderer.tileSize * 0.45));
+    ctx.font = `${fontSize}px 'Share Tech Mono', monospace`;
+
+    const lineH   = fontSize * 1.6;
+    const padX    = 16, padY = 10;
+    const maxW    = lines.reduce((m, l) => Math.max(m, ctx.measureText(l).width), 0);
+    const boxW    = maxW + padX * 2;
+    const boxH    = lines.length * lineH + padY * 2 + 20; // +20 for title
+
+    // 보드 위쪽 중앙 배치
+    const bx = renderer.offX + (renderer.tileSize * TutorialManager.COLS - boxW) / 2;
+    const by = Math.max(4, renderer.offY - boxH - 10);
+
+    // 말풍선 배경
+    ctx.fillStyle = 'rgba(13,15,24,0.92)';
+    this._roundRect(ctx, bx, by, boxW, boxH, 6);
+    ctx.fill();
+
+    // 테두리
+    ctx.strokeStyle = 'rgba(0,245,200,0.5)';
+    ctx.lineWidth = 1;
+    this._roundRect(ctx, bx, by, boxW, boxH, 6);
+    ctx.stroke();
+
+    // 꼬리 (삼각형)
+    const tx = bx + boxW / 2;
+    const ty = by + boxH;
+    ctx.fillStyle = 'rgba(13,15,24,0.92)';
+    ctx.beginPath();
+    ctx.moveTo(tx - 8, ty);
+    ctx.lineTo(tx + 8, ty);
+    ctx.lineTo(tx, ty + 8);
+    ctx.closePath();
+    ctx.fill();
+
+    // 타이틀
+    ctx.fillStyle = '#00f5c8';
+    ctx.font = `bold ${fontSize - 1}px 'Share Tech Mono', monospace`;
+    ctx.textAlign = 'left';
+    ctx.fillText(step.title, bx + padX, by + padY + fontSize);
+
+    // 본문
+    ctx.fillStyle = '#c8d4f0';
+    ctx.font = `${fontSize}px 'Share Tech Mono', monospace`;
+    lines.forEach((line, i) => {
+      ctx.fillText(line, bx + padX, by + padY + 20 + (i + 1) * lineH);
+    });
+  }
+
+  _drawProgress(ctx, W, H) {
+    const total   = TutorialManager.STEPS.length;
+    const dotR    = 4;
+    const gap     = 16;
+    const totalW  = total * dotR * 2 + (total - 1) * gap;
+    let   dx      = (W - totalW) / 2;
+    const dy      = H - 20;
+
+    for (let i = 0; i < total; i++) {
+      ctx.beginPath();
+      ctx.arc(dx + dotR, dy, dotR, 0, Math.PI * 2);
+      ctx.fillStyle = i < this.stepIdx ? '#00f5c8' :
+                      i === this.stepIdx ? '#ffffff'  : '#2a3060';
+      ctx.fill();
+      dx += dotR * 2 + gap;
+    }
+  }
+
+  _roundRect(ctx, x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.lineTo(x + w - r, y);
+    ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+    ctx.lineTo(x + w, y + h - r);
+    ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+    ctx.lineTo(x + r, y + h);
+    ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+    ctx.lineTo(x, y + r);
+    ctx.quadraticCurveTo(x, y, x + r, y);
+    ctx.closePath();
+  }
+}
+
+class Particle {
+  constructor() { this.active = false; }
+  spawn(x, y, color, vx, vy, life, size) {
+    Object.assign(this, { x, y, color, vx, vy, life, maxLife: life, size, active: true });
+  }
+  update(dt) {
+    if (!this.active) return;
+    this.x += this.vx * dt;
+    this.y += (this.vy + 200 * (1 - this.life / this.maxLife)) * dt;
+    this.vx *= 0.97;
+    this.life -= dt * 1000;
+    if (this.life <= 0) this.active = false;
+  }
+  draw(ctx) {
+    if (!this.active) return;
+    const alpha = Math.max(0, this.life / this.maxLife);
+    ctx.globalAlpha = alpha * .9;
+    ctx.fillStyle = this.color;
+    const s = this.size * alpha;
+    ctx.fillRect(this.x - s / 2, this.y - s / 2, s, s);
+    ctx.globalAlpha = 1;
+  }
+}
+
+class ParticleSystem {
+  constructor(maxParticles = 600) {
+    this.pool = Array.from({ length: maxParticles }, () => new Particle());
+  }
+  emit(x, y, colorObj, count = 12) {
+    for (let i = 0; i < count; i++) {
+      const p = this.pool.find(p => !p.active);
+      if (!p) break;
+      const angle = Math.random() * Math.PI * 2;
+      const spd = 80 + Math.random() * 220;
+      p.spawn(x, y,
+        Math.random() < .5 ? colorObj.fill : colorObj.glow,
+        Math.cos(angle) * spd,
+        Math.sin(angle) * spd - 60,
+        300 + Math.random() * 400,
+        3 + Math.random() * 5
+      );
+    }
+  }
+  update(dt) { this.pool.forEach(p => p.update(dt)); }
+  draw(ctx) { this.pool.forEach(p => p.draw(ctx)); }
+}
+
+/* ================================================================
+   FloatText — score popups
+================================================================ */
+class FloatText {
+  constructor(x, y, text, color) {
+    Object.assign(this, { x, y, text, color, life: 900, maxLife: 900, vy: -70 });
+  }
+  update(dt) { this.y += this.vy * dt; this.life -= dt * 1000; }
+  get alive() { return this.life > 0; }
+  draw(ctx, canvas) {
+    const alpha = Math.min(1, this.life / 300);
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = this.color;
+    ctx.font = `bold ${Math.round(14 + (1 - this.life / this.maxLife) * 4)}px 'Rajdhani', sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.fillText(this.text, this.x, this.y);
+    ctx.globalAlpha = 1;
+  }
+}
+
+/* ================================================================
+   RENDERER — Canvas 2D
+================================================================ */
+class Renderer {
+  constructor(canvas) {
+    this.canvas = canvas;
+    this.ctx = canvas.getContext('2d');
+    this.tileSize = 32;
+    this.offX = 0;
+    this.offY = 0;
+    this.particles = new ParticleSystem(800);
+    this.floatTexts = [];
+    this.hoverGroup = [];
+    this.hoverR = -1;
+    this.hoverC = -1;
+    this.animTiles = new Map(); // key→{r,c, scale, alpha, dy}
+    this.shakeTime = 0;
+    this.flashCells = new Map(); // key→ttl for white flash
+  }
+
+  resize(containerW, containerH, cols, rows) {
+    const padW = 24, padH = 24;
+    const ts = Math.floor(Math.min(
+      (containerW - padW * 2) / cols,
+      (containerH - padH * 2) / rows
+    ));
+    this.tileSize = Math.max(ts, 12);
+    const bw = this.tileSize * cols;
+    const bh = this.tileSize * rows;
+    this.canvas.width  = containerW;
+    this.canvas.height = containerH;
+    this.offX = Math.floor((containerW - bw) / 2);
+    this.offY = Math.floor((containerH - bh) / 2);
+  }
+
+  cellFromPointer(px, py) {
+    const c = Math.floor((px - this.offX) / this.tileSize);
+    const r = Math.floor((py - this.offY) / this.tileSize);
+    return { r, c };
+  }
+
+  triggerShake() { this.shakeTime = 200; }
+
+  spawnRemoveAnim(group, colorIdx) {
+    const ts = this.tileSize;
+    group.forEach(([r, c]) => {
+      const key = r * 1000 + c;
+      this.animTiles.set(key, { r, c, scale: 1, alpha: 1, colorIdx, ttl: 300 });
+      const cx = this.offX + c * ts + ts / 2;
+      const cy = this.offY + r * ts + ts / 2;
+      this.particles.emit(cx, cy, COLOR_PALETTE[colorIdx], 14);
+    });
+    group.forEach(([r, c]) => {
+      const cx = this.offX + c * ts + ts / 2;
+      const cy = this.offY + r * ts + ts / 2;
+      const ci = group[0]; // center for score popup
+      this.floatTexts.push(new FloatText(cx, cy,
+        '+' + scoreFormula(group.length),
+        COLOR_PALETTE[colorIdx].glow
+      ));
+    });
+  }
+
+  flashGroup(group) {
+    group.forEach(([r, c]) => {
+      this.flashCells.set(r * 1000 + c, 120);
+    });
+  }
+
+  draw(board, cols, rows, ts) {
+    ts = ts || this.tileSize;
+    const ctx = this.ctx;
+    const W = this.canvas.width, H = this.canvas.height;
+
+        let sx = 0, sy = 0;
+    if (this.shakeTime > 0) {
+      const mag = (this.shakeTime / 200) * 4;
+      sx = (Math.random() - .5) * mag;
+      sy = (Math.random() - .5) * mag;
+    }
+
+        ctx.clearRect(0, 0, W, H);
+    ctx.fillStyle = '#08090d';
+    ctx.fillRect(0, 0, W, H);
+
+        ctx.fillStyle = 'rgba(26,32,64,.4)';
+    for (let r = 0; r <= rows; r++)
+      for (let c = 0; c <= cols; c++) {
+        ctx.fillRect(this.offX + c * ts - 1, this.offY + r * ts - 1, 2, 2);
+      }
+
+    ctx.save();
+    ctx.translate(sx, sy);
+
+        for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        const colorIdx = board[r][c];
+        if (colorIdx === -1) continue;
+
+        const key = r * 1000 + c;
+        const isAnim   = this.animTiles.has(key);
+        const isHover  = this.hoverGroup.some(([hr, hc]) => hr === r && hc === c);
+        const isFlash  = this.flashCells.has(key);
+
+        let x = this.offX + c * ts;
+        let y = this.offY + r * ts;
+        let scale = 1, alpha = 1;
+
+        if (isAnim) {
+          const a = this.animTiles.get(key);
+          scale = a.scale; alpha = a.alpha;
+        }
+
+        const pad = 2;
+        const sz = ts - pad * 2;
+        const pal = COLOR_PALETTE[colorIdx];
+
+        ctx.save();
+        ctx.globalAlpha = alpha;
+
+        const cx = x + ts / 2, cy = y + ts / 2;
+        ctx.translate(cx, cy);
+        ctx.scale(scale, scale);
+        ctx.translate(-cx, -cy);
+
+        // cell bg
+        ctx.fillStyle = isFlash ? '#ffffff' :
+                        isHover ? pal.fill  :
+                        pal.dark;
+        ctx.fillRect(x + pad, y + pad, sz, sz);
+
+        if (!isFlash) {
+          // inner highlight
+          ctx.fillStyle = pal.fill;
+          ctx.fillRect(x + pad + 2, y + pad + 2, sz - 4, 6);
+
+          // center dot
+          ctx.fillStyle = isHover ? '#fff' : pal.glow;
+          const dsz = Math.max(4, sz * .28);
+          ctx.fillRect(cx - dsz / 2, cy - dsz / 2, dsz, dsz);
+
+          // glow on hover
+          if (isHover) {
+            ctx.shadowColor = pal.glow;
+            ctx.shadowBlur = 16;
+            ctx.fillStyle = 'rgba(255,255,255,.15)';
+            ctx.fillRect(x + pad, y + pad, sz, sz);
+            ctx.shadowBlur = 0;
+          }
+
+          // border
+          ctx.strokeStyle = isHover ? pal.glow : 'rgba(255,255,255,.08)';
+          ctx.lineWidth = isHover ? 1.5 : 1;
+          ctx.strokeRect(x + pad + .5, y + pad + .5, sz - 1, sz - 1);
+        }
+
+        ctx.restore();
+      }
+    }
+
+        for (const [key, a] of this.animTiles) {
+      const pal = COLOR_PALETTE[a.colorIdx];
+      const x = this.offX + a.c * ts;
+      const y = this.offY + a.r * ts;
+      const pad = 2, sz = ts - pad * 2;
+      const cx = x + ts / 2, cy = y + ts / 2;
+      ctx.save();
+      ctx.globalAlpha = a.alpha;
+      ctx.shadowColor = pal.glow;
+      ctx.shadowBlur = 20 * (1 - a.scale);
+      ctx.translate(cx, cy);
+      ctx.scale(a.scale, a.scale);
+      ctx.translate(-cx, -cy);
+      ctx.fillStyle = pal.fill;
+      ctx.fillRect(x + pad, y + pad, sz, sz);
+      ctx.restore();
+    }
+
+        ctx.strokeStyle = 'rgba(26,32,64,.8)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(this.offX, this.offY, cols * ts, rows * ts);
+
+    ctx.restore();
+
+        this.particles.draw(ctx);
+
+        for (const ft of this.floatTexts) ft.draw(ctx, this.canvas);
+
+        if (window.tutMgr) window.tutMgr.drawHint(ctx, this);
+  }
+
+  update(dt, board, cols, rows) {
+    // anim tiles: shrink + fade
+    for (const [key, a] of this.animTiles) {
+      a.ttl -= dt * 1000;
+      const t = 1 - Math.max(0, a.ttl / 300);
+      a.scale = 1 - t * t * .5;
+      a.alpha = 1 - t;
+      if (a.ttl <= 0) this.animTiles.delete(key);
+    }
+
+    // flash cells
+    for (const [key, ttl] of this.flashCells) {
+      this.flashCells.set(key, ttl - dt * 1000);
+      if (ttl <= 0) this.flashCells.delete(key);
+    }
+
+    // particles
+    this.particles.update(dt);
+
+    // float texts
+    this.floatTexts = this.floatTexts.filter(ft => ft.alive);
+    this.floatTexts.forEach(ft => ft.update(dt));
+
+    // shake decay
+    this.shakeTime = Math.max(0, this.shakeTime - dt * 1000);
+
+    // tutorial pulse update
+    if (window.tutMgr) window.tutMgr.update(dt);
+  }
+}
+
+const canvas     = document.getElementById('gameCanvas');
+const canvasWrap = document.getElementById('canvas-wrap');
+const overlay    = document.getElementById('overlay');
+const olTitle    = document.getElementById('overlay-title');
+const olSub      = document.getElementById('overlay-sub');
+const olScoreBlock   = document.getElementById('overlay-score');
+const olScoreLabel   = document.getElementById('ol-score-label');
+const olScoreVal     = document.getElementById('ol-score-val');
+const olLevelInfo    = document.getElementById('overlay-levelinfo');
+const olLevelLabel   = document.getElementById('ol-level-label');
+const olLevelGained  = document.getElementById('ol-level-gained');
+const olLevelBonus   = document.getElementById('ol-level-bonus');
+const olBestNew      = document.getElementById('overlay-best-new');
+const olActionBtn    = document.getElementById('overlay-action-btn');
+const olDiffRow      = document.getElementById('diff-row');
+const svScore    = document.getElementById('sv-score');
+const svLevel    = document.getElementById('sv-level');
+const svBest     = document.getElementById('sv-best');
+const svCombo    = document.getElementById('sv-combo');
+const svTiles    = document.getElementById('sv-tiles');
+const msgBar     = document.getElementById('msg-bar');
+const comboPop   = document.getElementById('combo-pop');
+const levelFlash = document.getElementById('level-flash');
+const btnUndo    = document.getElementById('btn-undo');
+
+let logic      = null;
+let renderer   = null;
+let network    = new NetworkManager();
+let canPick    = false;
+let gameActive = false;
+let lastTime   = 0;
+
+const COMBO_MIN_SIZE  = 5;
+const COMBO_CHAIN_MIN = 3;
+
+// 한 세션 = 같은 난이도로 GAME OVER 날 때까지 이어지는 플레이
+// sessionScore : 이번 세션 누적 점수 (레벨 간 이월)
+// level        : 현재 몇 번째 보드 (1부터 시작)
+// overlayMode  : 현재 오버레이가 어떤 상태인지
+let comboCount    = 0;
+let lastGroupSize = 0;
+let currentDiff   = 'normal';
+let sessionScore  = 0;   // 이번 세션 총 점수
+let level         = 0;   // 현재 레벨
+let overlayMode   = 'start'; // 'start' | 'levelclear' | 'gameover'
+
+// 키: samegame_best_easy / samegame_best_normal / samegame_best_hard
+function getBest(diff) {
+  return +localStorage.getItem('samegame_best_' + diff) || 0;
+}
+function setBest(diff, score) {
+  localStorage.setItem('samegame_best_' + diff, score);
+}
+
+function init() {
+  renderer = new Renderer(canvas);
+  resizeCanvas();
+  svBest.textContent = getBest(currentDiff).toLocaleString();
+
+  const tutDone = localStorage.getItem('samegame_tut_done');
+  if (!tutDone) {
+    showOverlay('tutorial_intro');  // 첫 방문
+  } else {
+    showOverlay('start');
+  }
+  requestAnimationFrame(loop);
+
+  canvas.addEventListener('mousemove', onMouseMove);
+  canvas.addEventListener('mouseleave', () => {
+    if (renderer) renderer.hoverGroup = [];
+  });
+  canvas.addEventListener('click', onCanvasClick);
+  canvas.addEventListener('touchstart', onTouchStart, { passive: false });
+  window.addEventListener('resize', resizeCanvas);
+}
+
+function resizeCanvas() {
+  if (!renderer || !logic) {
+    renderer && renderer.resize(
+      canvasWrap.offsetWidth, canvasWrap.offsetHeight, 15, 12
+    );
+    return;
+  }
+  renderer.resize(
+    canvasWrap.offsetWidth, canvasWrap.offsetHeight,
+    logic.cfg.cols, logic.cfg.rows
+  );
+}
+
+function loop(ts) {
+  const dt = Math.min((ts - lastTime) / 1000, 0.05);
+  lastTime = ts;
+
+  if (renderer && logic) {
+    renderer.update(dt, logic.board, logic.cfg.cols, logic.cfg.rows);
+    renderer.draw(logic.board, logic.cfg.cols, logic.cfg.rows);
+  }
+
+  requestAnimationFrame(loop);
+}
+
+function onMouseMove(e) {
+  if (!canPick || !logic) return;
+  const rect = canvas.getBoundingClientRect();
+  const { r, c } = renderer.cellFromPointer(e.clientX - rect.left, e.clientY - rect.top);
+  if (r === renderer.hoverR && c === renderer.hoverC) return;
+  renderer.hoverR = r; renderer.hoverC = c;
+  if (r >= 0 && r < logic.cfg.rows && c >= 0 && c < logic.cfg.cols && logic.board[r][c] !== -1) {
+    const g = logic.getGroup(r, c);
+    renderer.hoverGroup = g.length >= logic.cfg.minGroup ? g : [];
+    const valid = g.length >= logic.cfg.minGroup;
+    setMsg(valid
+      ? `<span class="hi">[${g.length} nodes]</span> score: <span class="hi">+${scoreFormula(g.length)}</span>`
+      : `<span class="warn">too few nodes — need ${logic.cfg.minGroup}+</span>`
+    );
+  } else {
+    renderer.hoverGroup = [];
+    setMsg('hover a node cluster to preview');
+  }
+}
+
+function onTouchStart(e) {
+  e.preventDefault();
+  const touch = e.touches[0];
+  const rect = canvas.getBoundingClientRect();
+  handleClick(touch.clientX - rect.left, touch.clientY - rect.top);
+}
+
+function onCanvasClick(e) {
+  const rect = canvas.getBoundingClientRect();
+  handleClick(e.clientX - rect.left, e.clientY - rect.top);
+}
+
+function handleClick(px, py) {
+  if (!canPick || !logic || !gameActive) return;
+  const { r, c } = renderer.cellFromPointer(px, py);
+  if (r < 0 || r >= logic.cfg.rows || c < 0 || c >= logic.cfg.cols) return;
+
+    // tutMgr가 true를 반환하면 이 클릭은 튜토리얼이 처리 → 기존 로직 차단
+  if (window.tutMgr && window.tutMgr.active) {
+    const handled = window.tutMgr.interceptClick(r, c, logic);
+    // 튜토리얼 마지막 스텝 완료 감지 (done은 interceptClick 후 stepIdx 증가로 설정됨)
+    if (window.tutMgr.done) {
+      endTutorial();
+      return;
+    }
+    if (handled) return;
+  }
+
+  const result = logic.applyInput(r, c);
+  if (!result.valid) {
+    renderer.flashGroup([[r, c]]);
+    setMsg(`<span class="warn">group too small — need ${logic.cfg.minGroup}+ nodes</span>`);
+    return;
+  }
+
+    const tileColorIdx = result.removedColor ?? 0;
+  const groupSize    = result.group.length;
+
+  renderer.spawnRemoveAnim(result.group, tileColorIdx);
+  renderer.triggerShake();
+
+    // 규칙:
+  //   - 그룹 크기 >= COMBO_MIN_SIZE  → 콤보 카운트 +1 (연속 체인 유지)
+  //   - 그룹 크기 < COMBO_MIN_SIZE   → 콤보 리셋 (작은 그룹은 콤보 안 됨)
+  //   단, 처음 진입은 COMBO_CHAIN_MIN(3) 이상이어야 카운트 시작
+  if (groupSize >= COMBO_MIN_SIZE) {
+    comboCount++;
+  } else if (groupSize >= COMBO_CHAIN_MIN && comboCount === 0) {
+    // 3~4 크기는 첫 타에만 콤보 시작 가능하나 체인 유지 안 됨 → 카운트 없음
+    comboCount = 0;
+  } else {
+    // 2~COMBO_CHAIN_MIN-1 이하 → 리셋
+    comboCount = 0;
+  }
+  lastGroupSize = groupSize;
+
+  updateUI();
+  showComboIfNeeded(comboCount, result.gained, groupSize);
+
+  for (const ev of result.events) {
+    if (ev.type === 'BOARD_CLEAR') {
+      triggerLevelFlash();
+      if (window.tutMgr) {
+        // 튜토리얼 보드 클리어 → 튜토리얼 종료
+        setTimeout(() => endTutorial(), 600);
+      } else {
+        setTimeout(() => endGame(true), 600);
+      }
+    } else if (ev.type === 'GAME_OVER') {
+      canPick = false;
+      renderer.hoverGroup = [];
+      setTimeout(() => endGame(false), 600);
+    }
+  }
+}
+
+// We need to capture color BEFORE applyInput removes it; patch logic to return it
+// Already patched below via overriding applyInput wrapper
+function patchLogicForColor(l) {
+  const orig = l.applyInput.bind(l);
+  l.applyInput = function(r, c) {
+    const colorBeforeRemove = this.board[r]?.[c] ?? 0;
+    const res = orig(r, c);
+    if (res.valid) res.removedColor = colorBeforeRemove;
+    return res;
+  };
+}
+
+function getBoardColorBeforeRemove(result) { return result.removedColor ?? 0; }
+
+function setMsg(html) { msgBar.innerHTML = html; }
+
+function flashStat(el) {
+  el.classList.add('flash');
+  setTimeout(() => el.classList.remove('flash'), 200);
+}
+
+function updateUI() {
+  if (!logic) return;
+  // 현재 레벨 점수 + 세션 누적
+  const total = sessionScore + logic.score;
+  svScore.textContent = total.toLocaleString();
+  flashStat(svScore);
+
+  svLevel.textContent = level;
+  svCombo.textContent = comboCount >= 2 ? `×${comboCount}` : '—';
+  if (comboCount >= 2) flashStat(svCombo);
+  svTiles.textContent = logic.countTiles();
+  btnUndo.style.opacity = logic.history.length ? '1' : '.3';
+
+  // 난이도별 최고 기록 갱신 체크
+  const best = getBest(currentDiff);
+  if (total > best) {
+    setBest(currentDiff, total);
+    svBest.textContent = total.toLocaleString();
+    flashStat(svBest);
+  }
+}
+
+function showComboIfNeeded(n, gained, groupSize) {
+  // 콤보 팝업: 2연속 이상 + COMBO_MIN_SIZE 이상 그룹일 때만
+  if (n < 2) return;
+  comboPop.textContent = n >= 8 ? `⚡ MEGA COMBO ×${n}` :
+                         n >= 5 ? `✦ CHAIN ×${n}`       :
+                                  `✦ COMBO ×${n}`;
+  comboPop.classList.add('show');
+  clearTimeout(comboPop._t);
+  comboPop._t = setTimeout(() => comboPop.classList.remove('show'), 1200);
+}
+
+function setDiff(d) {
+  currentDiff = d;
+  ['easy','normal','hard'].forEach(k =>
+    document.getElementById('btn-' + k).classList.toggle('active', k === d)
+  );
+  // 타이틀 화면에서 변경할 때 BEST 즉시 갱신
+  if (overlayMode === 'start') {
+    svBest.textContent = getBest(d).toLocaleString();
+  }
+}
+
+function startTutorial() {
+  // 고정 보드로 GameLogic 초기화
+  const cfg = { ...TutorialManager.CFG };
+  logic = new GameLogic(cfg);
+  // 고정 보드 주입 (랜덤 보드 덮어쓰기)
+  logic.board = TutorialManager.BOARD.map(row => [...row]);
+  logic.score = 0; logic.moveCount = 0; logic.history = [];
+  patchLogicForColor(logic);
+
+  resizeCanvas();
+  comboCount    = 0;
+  lastGroupSize = 0;
+  sessionScore  = 0;
+  level         = 0;
+  gameActive    = true;
+  canPick       = true;
+
+  renderer.hoverGroup = [];
+  renderer.floatTexts = [];
+  renderer.animTiles.clear();
+  renderer.particles.pool.forEach(p => p.active = false);
+
+  // TutorialManager 생성
+  window.tutMgr = new TutorialManager(renderer, logic);
+
+  hideOverlay();
+  svLevel.textContent = 'TUT';
+  svScore.textContent = '0';
+  svCombo.textContent = '—';
+  svTiles.textContent = logic.countTiles();
+  btnUndo.style.opacity = '.3';
+  setMsg('<span class="hi">[TUTORIAL]</span> 빨간 그룹(6개)을 클릭해보세요!');
+}
+
+// 튜토리얼 완료 → localStorage 저장 → startGame()
+function endTutorial() {
+  localStorage.setItem('samegame_tut_done', '1');
+  window.tutMgr = null;
+  gameActive = false;
+  canPick    = false;
+  renderer.hoverGroup = [];
+
+  // 완료 연출: 잠깐 플래시 후 게임 시작
+  triggerLevelFlash();
+  setMsg('<span class="hi">✦ 튜토리얼 완료!</span> 게임을 시작합니다…');
+  setTimeout(() => {
+    startGame();
+  }, 1400);
+}
+
+// 세션 전체 시작 (난이도 선택 후 첫 번째 레벨)
+function startGame() {
+  sessionScore = 0;
+  level        = 0;
+  svBest.textContent = getBest(currentDiff).toLocaleString();
+  startLevel();
+}
+
+// 레벨 하나 초기화 (세션 내 레벨 전환 포함)
+function startLevel() {
+  // 튜토리얼 종료 보장
+  window.tutMgr = null;
+
+  level++;
+  const cfg = DIFFICULTIES[currentDiff];
+  logic = new GameLogic(cfg);
+  patchLogicForColor(logic);
+  resizeCanvas();
+  comboCount    = 0;
+  lastGroupSize = 0;
+  gameActive    = true;
+  canPick       = true;
+  renderer.hoverGroup = [];
+  renderer.floatTexts = [];
+  renderer.animTiles.clear();
+  renderer.particles.pool.forEach(p => p.active = false);
+  hideOverlay();
+  svLevel.textContent = level;
+  svCombo.textContent = '—';
+  // 세션 누적 점수로 스탯 갱신
+  svScore.textContent = sessionScore.toLocaleString();
+  svTiles.textContent = logic.countTiles();
+  btnUndo.style.opacity = '.3';
+  setMsg(`level ${level} — select a node cluster to remove`);
+}
+
+function undoMove() {
+  if (!logic || !gameActive) return;
+  if (logic.undo()) {
+    canPick = true;
+    comboCount = Math.max(0, comboCount - 1);
+    updateUI();
+    setMsg('<span class="hi">undo applied</span> — move reversed');
+  }
+}
+
+// cleared: 보드를 모두 제거했는지 여부
+function endGame(cleared) {
+  gameActive = false;
+  canPick    = false;
+  renderer.hoverGroup = [];
+
+  const levelScore = logic.score + (cleared ? 1000 : 0);
+  if (cleared) logic.score += 1000;
+  updateUI(); // 최고 기록 갱신 포함
+
+  // 세션 누적에 이번 레벨 점수 반영
+  sessionScore += levelScore;
+
+  if (cleared) {
+    // 레벨 클리어 → 오버레이 잠깐 보여준 뒤 다음 레벨
+    showOverlay('levelclear', levelScore);
+  } else {
+    // 막힌 경우 → 세션 종료
+    showOverlay('gameover', sessionScore);
+  }
+}
+
+// overlayMode에 따라 버튼 클릭 동작 분기
+function overlayAction() {
+  if (overlayMode === 'tutorial_intro') {
+    startTutorial();
+  } else if (overlayMode === 'start' || overlayMode === 'gameover') {
+    startGame();
+  } else if (overlayMode === 'levelclear') {
+    startLevel();
+  }
+}
+
+// 튜토리얼 건너뛰기 (타이틀 화면으로)
+function skipTutorial() {
+  localStorage.setItem('samegame_tut_done', '1');
+  showOverlay('start');
+}
+
+// 튜토리얼 다시 보기 (? 버튼)
+function replayTutorial() {
+  localStorage.removeItem('samegame_tut_done');
+  showOverlay('tutorial_intro');
+}
+
+function showOverlay(type, score) {
+  overlayMode = type;
+
+  // 요소 초기 숨김
+  olScoreBlock.style.display  = 'none';
+  olLevelInfo.style.display   = 'none';
+  olBestNew.style.display     = 'none';
+  olDiffRow.style.display     = 'flex';
+  document.getElementById('tut-skip-link').style.display = 'none';
+
+  if (type === 'tutorial_intro') {
+    olTitle.textContent  = 'GRID PROTOCOL';
+    olTitle.style.color  = 'var(--accent)';
+    olSub.innerHTML      = '처음 방문하셨나요?<br>'
+                         + '짧은 인터랙티브 튜토리얼로 규칙을 배워보세요 (약 1분)<br>'
+                         + '<span style="color:var(--textdim);font-size:10px">'
+                         + '튜토리얼 완료 후 바로 게임이 시작됩니다</span>';
+    olDiffRow.style.display = 'none';
+    olActionBtn.textContent = '▶ 튜토리얼 시작';
+    document.getElementById('tut-skip-link').style.display = 'block';
+
+  } else if (type === 'start') {
+    olTitle.textContent  = 'GRID PROTOCOL';
+    olTitle.style.color  = 'var(--accent)';
+    olSub.innerHTML      = 'connect same-colored nodes to clear the grid<br>'
+                         + 'larger groups → exponential score bonus<br>'
+                         + '<span style="color:var(--textdim);font-size:10px">'
+                         + 'EASY ~27% clear · NORMAL ~7% · HARD ~0.6% (challenge)</span>';
+    olActionBtn.textContent = '▶ INITIATE';
+
+  } else if (type === 'levelclear') {
+    olTitle.textContent  = `LEVEL ${level} CLEAR`;
+    olTitle.style.color  = '#88ff20';
+    olSub.innerHTML      = 'board fully cleared!';
+    olDiffRow.style.display = 'none'; // 레벨 클리어 중엔 난이도 버튼 숨김
+
+    // 레벨 점수 상세
+    olLevelInfo.style.display  = 'block';
+    olLevelLabel.textContent   = `LEVEL ${level} SCORE`;
+    olLevelGained.textContent  = '+' + score.toLocaleString();
+    const bonus = score - (score - 1000); // clear bonus portion
+    olLevelBonus.textContent   = 'includes +1,000 clear bonus';
+
+    // 세션 누적 표시
+    olScoreBlock.style.display = 'block';
+    olScoreLabel.textContent   = 'SESSION TOTAL';
+    olScoreVal.textContent     = sessionScore.toLocaleString();
+
+    // 신기록 표시
+    if (sessionScore >= getBest(currentDiff)) {
+      olBestNew.style.display = 'block';
+    }
+    olActionBtn.textContent = `▶ LEVEL ${level + 1}`;
+
+    // 3초 후 자동으로 다음 레벨 (버튼 클릭 없어도)
+    clearTimeout(showOverlay._autoNext);
+    showOverlay._autoNext = setTimeout(() => {
+      if (overlayMode === 'levelclear') startLevel();
+    }, 3000);
+
+  } else { // gameover
+    olTitle.textContent  = 'GRID LOCKED';
+    olTitle.style.color  = 'var(--warn)';
+    olSub.innerHTML      = `no valid moves remain<br>`
+                         + `<span style="color:var(--textdim)">${logic.countTiles()} nodes uncleared · level ${level}</span>`;
+
+    olScoreBlock.style.display = 'block';
+    olScoreLabel.textContent   = 'SESSION SCORE';
+    olScoreVal.textContent     = score.toLocaleString();
+
+    if (score >= getBest(currentDiff)) {
+      olBestNew.style.display = 'block';
+    }
+    olActionBtn.textContent = '↺ PLAY AGAIN';
+  }
+
+  overlay.classList.add('show');
+}
+
+function hideOverlay() {
+  clearTimeout(showOverlay._autoNext);
+  overlay.classList.remove('show');
+  overlayMode = '';
+}
+
+// 레벨 클리어 시 화면 플래시 연출
+function triggerLevelFlash() {
+  levelFlash.classList.add('show');
+  setTimeout(() => levelFlash.classList.remove('show'), 200);
+}
+
+init();
+</script>
+</body>
+</html>

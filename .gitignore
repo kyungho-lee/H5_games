@@ -1,9 +1,0 @@
-node_modules/
-dist/
-.DS_Store
-Thumbs.db
-.vscode/settings.json
-.idea/
-*.swp
-.env
-.env.local

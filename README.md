@@ -53,7 +53,7 @@ npm run build  # src/samegame.html → dist/index.html (~6% smaller)
 ## Roadmap
 
 - [ ] `feature/hint-system` — highlight best available group
-- [ ] `feature/sound-effects` — Web Audio API tile removal sounds
+- [x] `feature/sound-effects` — Web Audio API 8-bit synthesized sounds (SoundManager)
 - [ ] `feature/animation-gravity` — smooth tile-drop animation
 - [ ] `feature/multiplayer-colyseus` — real-time multiplayer via Colyseus
 - [ ] `chore/gh-pages-deploy` — auto-deploy to GitHub Pages

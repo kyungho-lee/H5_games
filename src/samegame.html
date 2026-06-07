@@ -747,11 +747,11 @@ class TutorialManager {
   // 중력: row5 = 바닥
   static BOARD = [
     [-1,-1,-1,-1,-1,-1,-1,-1],
-    [-1, 0, 0,-1,-1,-1,-1,-1],
-    [-1, 0, 0,-1, 2, 2,-1,-1],
-    [ 0, 0,-1,-1, 2, 2,-1,-1],
-    [-1,-1, 1, 1, 2,-1, 1,-1],  // [4,6] = 혼자 CYAN (제거 불가 시연용)
-    [-1,-1, 1, 1, 1,-1,-1,-1],
+    [-1,-1,-1,-1,-1,-1,-1,-1],
+    [-1,-1, 0,-1, 2,-1,-1,-1],
+    [-1, 0, 0,-1, 2,-1,-1,-1],
+    [-1, 0, 1, 1, 2, 2,-1,-1],
+    [ 0, 0, 1, 1, 1, 2, 1,-1],  // [5,6] = 혼자 CYAN (제거 불가 시연용)
   ];
   static COLS = 8;
   static ROWS = 6;
@@ -766,7 +766,7 @@ class TutorialManager {
       id: 'big-group',
       title: 'STEP 1 / 4',
       msg:   '같은 색 인접 타일이 2개 이상 연결된 그룹을 클릭하세요.\n빨간 그룹(6개)을 클릭해 보세요!',
-      hintCells:  [[1,1],[1,2],[2,1],[2,2],[3,0],[3,1]],
+      hintCells:  [[2,2],[3,1],[3,2],[4,1],[5,0],[5,1]],
       validColor: 0,   // RED
       minSize:    5,
       allowFail:  true,
@@ -776,7 +776,7 @@ class TutorialManager {
       id: 'too-small',
       title: 'STEP 2a / 4',
       msg:   '혼자 떨어진 타일은 제거할 수 없어요.\n파란 외톨이 타일을 클릭해보세요!',
-      hintCells:  [[4,6]],
+      hintCells:  [[5,6]],
       validColor: 1,   // CYAN (혼자짜리 — 실패 유도)
       minSize:    0,   // 크기 제한 없음 (모든 클릭 허용, 실패 체험)
       allowFail:  false,
@@ -797,7 +797,7 @@ class TutorialManager {
       id: 'combo',
       title: 'STEP 3 / 4',
       msg:   '초록 그룹(5개)을 연속으로 제거해 콤보를 만드세요!\n같은 크기 이상 연속 제거 → 콤보 보너스!',
-      hintCells:  [[2,4],[2,5],[3,4],[3,5],[4,4]],
+      hintCells:  [[2,4],[3,4],[4,4],[4,5],[5,5]],
       validColor: 2,   // GREEN
       minSize:    4,
       allowFail:  true,
@@ -1397,7 +1397,7 @@ const COMBO_CHAIN_MIN = 3;
 // overlayMode  : 현재 오버레이가 어떤 상태인지
 let comboCount    = 0;
 let lastGroupSize = 0;
-let currentDiff   = 'normal';
+let currentDiff   = 'easy';
 let sessionScore  = 0;   // 이번 세션 총 점수
 let level         = 0;   // 현재 레벨
 let overlayMode   = 'start'; // 'start' | 'levelclear' | 'gameover'

@@ -617,13 +617,14 @@ class TutorialManager {
   ];
 
   constructor(renderer, logic) {
-    this.renderer  = renderer;
-    this.logic     = logic;
-    this.stepIdx   = 0;
-    this.active    = true;
-    this.failShown = false;  // 이번 스텝에서 실패 메시지 표시 여부
-    this.pulseT    = 0;      // 스포트라이트 펄스 타이머
-    this.msgLines  = [];     // 현재 표시할 메시지 줄 배열
+    this.renderer       = renderer;
+    this.logic          = logic;
+    this.stepIdx        = 0;
+    this.active         = true;
+    this.failShown      = false;  // 이번 스텝에서 실패 메시지 표시 여부
+    this.pulseT         = 0;      // 스포트라이트 펄스 타이머
+    this.msgLines       = [];     // 현재 표시할 메시지 줄 배열
+    this._liveHintCells = null;   // _refreshHintCells() 로 매 프레임 갱신
     this._updateMsg();
   }
 
@@ -713,14 +714,58 @@ class TutorialManager {
     this.pulseT += dt;
   }
 
+  // 현재 보드에서 이 스텝의 타겟 타일 실제 위치를 탐색해 _liveHintCells 갱신.
+  // drawHint() 매 프레임 호출 — 보드가 6×8로 작아 성능 영향 없음.
+  _refreshHintCells() {
+    const step = this.currentStep;
+    if (!step) { this._liveHintCells = null; return; }
+
+    const board    = this.logic.board;
+    const cols     = this.logic.cfg.cols;
+    const rows     = this.logic.cfg.rows;
+    const minGroup = this.logic.cfg.minGroup;
+    const visited  = new Set();
+
+    // 아래행부터 왼쪽→오른쪽 순으로 스캔 (중력으로 타일이 바닥에 모임)
+    for (let r = rows - 1; r >= 0; r--) {
+      for (let c = 0; c < cols; c++) {
+        if (board[r][c] !== step.validColor) continue;
+        const key = r * 1000 + c;
+        if (visited.has(key)) continue;
+
+        const group = this.logic.getGroup(r, c);
+        group.forEach(([gr, gc]) => visited.add(gr * 1000 + gc));
+
+        if (step.isFailStep) {
+          // 고립 타일 탐색: 그룹 크기 < minGroup
+          if (group.length < minGroup) {
+            this._liveHintCells = group;
+            return;
+          }
+        } else {
+          // 유효 그룹 탐색: 그룹 크기 >= minSize
+          if (group.length >= step.minSize) {
+            this._liveHintCells = group;
+            return;
+          }
+        }
+      }
+    }
+    this._liveHintCells = null; // 못 찾으면 원본 hintCells 사용(폴백)
+  }
+
   // Renderer.draw() 끝에서 ctx에 직접 그린다
   drawHint(ctx, renderer) {
     if (!this.active || this.done) return;
 
-    const step = this.currentStep;
-    const ts   = renderer.tileSize;
-    const W    = renderer.canvas.width;
-    const H    = renderer.canvas.height;
+    // 매 프레임 보드에서 실제 타일 위치 갱신 (_removeEmptyColumns 이후 위치 변화 반영)
+    this._refreshHintCells();
+
+    const step      = this.currentStep;
+    const hintCells = this._liveHintCells ?? step.hintCells;
+    const ts        = renderer.tileSize;
+    const W         = renderer.canvas.width;
+    const H         = renderer.canvas.height;
 
     // ── 1. 전체 어둠 레이어 (스포트라이트 준비) ──
     ctx.save();
@@ -731,7 +776,7 @@ class TutorialManager {
     const pulse = 0.15 * Math.sin(this.pulseT * 4) + 0.85; // 0.70 ~ 1.00
     ctx.globalCompositeOperation = 'destination-out';
     const pad = 3;
-    for (const [hr, hc] of step.hintCells) {
+    for (const [hr, hc] of hintCells) {
       const x = renderer.offX + hc * ts + pad;
       const y = renderer.offY + hr * ts + pad;
       const s = ts - pad * 2;
@@ -761,7 +806,7 @@ class TutorialManager {
     ctx.lineWidth   = 2;
     ctx.shadowColor = glowColor;
     ctx.shadowBlur  = 12 * pulse;
-    for (const [hr, hc] of step.hintCells) {
+    for (const [hr, hc] of hintCells) {
       const x = renderer.offX + hc * ts + pad;
       const y = renderer.offY + hr * ts + pad;
       const s = ts - pad * 2;

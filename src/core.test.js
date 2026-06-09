@@ -140,9 +140,9 @@ function makeFakeStorage() {
   const run = {
     score: 12340, moves: 14, cleared: true,
     trail: [
-      { r: 0, c: 0, t: 0,   n: 12 }, // big  → 🟩
-      { r: 1, c: 1, t: 100, n: 5  }, // mid  → 🟨
-      { r: 2, c: 2, t: 200, n: 2  }, // sml  → 🟦
+      { r: 0, c: 0, t: 0,   n: 12 }, // max → avg = (12+5+2)/3 = 6.3
+      { r: 1, c: 1, t: 100, n: 5  },
+      { r: 2, c: 2, t: 200, n: 2  },
     ],
   };
   dm.recordResult('normal', run);
@@ -152,11 +152,16 @@ function makeFakeStorage() {
   assert.ok(share.includes('NORMAL'),           'Share: contains difficulty');
   assert.ok(share.includes('12,340'),           'Share: contains formatted score');
   assert.ok(share.includes('🔥'),              'Share: contains streak emoji');
-  assert.ok(share.includes('🟩'),              'Share: big group → 🟩');
-  assert.ok(share.includes('🟨'),              'Share: mid group → 🟨');
-  assert.ok(share.includes('🟦'),              'Share: small group → 🟦');
+  assert.ok(share.includes('최대 12개'),        'Share: max group size');
+  assert.ok(share.includes('평균 6.3개/수'),    'Share: average group size');
+  assert.ok(share.includes('✓ 클리어'),         'Share: cleared flag');
   assert.ok(!share.includes('"r"'),            'Share: no raw r/c in output');
   assert.ok(!share.includes('board'),          'Share: no "board" in output');
+
+  // 미클리어 케이스
+  const run2 = { score: 500, moves: 5, cleared: false, trail: [{ r:0,c:0,t:0,n:3 }] };
+  const share2 = dm.buildShareString('normal', run2);
+  assert.ok(share2.includes('✗ 미클리어'),     'Share: not-cleared flag');
 
   console.log('✓ buildShareString');
 }

@@ -329,17 +329,18 @@
     }
 
     buildShareString(diff, run) {
-      const today = this.todayKey();
-      const stats = this.getStats(diff);
-      const EMOJI = { big: '🟩', mid: '🟨', sml: '🟦' };
-      const trail = (run.trail || []).map(t =>
-        t.n >= 10 ? EMOJI.big : t.n >= 5 ? EMOJI.mid : EMOJI.sml
-      ).join('');
+      const today  = this.todayKey();
+      const stats  = this.getStats(diff);
+      const trail  = run.trail || [];
+      const maxN   = trail.length ? trail.reduce((m, t) => Math.max(m, t.n), 0) : 0;
+      const avgN   = trail.length ? trail.reduce((s, t) => s + t.n, 0) / trail.length : 0;
+      const result = run.cleared ? '✓ 클리어' : '✗ 미클리어';
+      const stats4 = '최대 ' + maxN + '개  평균 ' + avgN.toFixed(1) + '개/수  ' + result;
       return [
         'SameGame · Grid Protocol',
         'Daily ' + today + ' · ' + diff.toUpperCase(),
         'Score ' + run.score.toLocaleString() + ' · ' + run.moves + ' moves · 🔥' + stats.streak,
-        trail,
+        stats4,
       ].join('\n');
     }
 

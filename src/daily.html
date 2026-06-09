@@ -200,7 +200,7 @@ let lastRun     = null;
 
 // ── Boot ──────────────────────────────────────────────────────────
 function init() {
-  dailyMgr = new DailyManager(new LocalAdapter(), localStorage);
+  dailyMgr = new DailyManager(new LocalAdapter(localStorage), localStorage);
   renderer  = new Renderer(canvas);
   resizeCanvas();
   applyDiffUI();

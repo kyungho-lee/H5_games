@@ -111,6 +111,42 @@
   }
   .btn-ol.secondary:hover { background: rgba(255,255,255,.04); }
   .btn-row { display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; }
+
+  /* ── DEV BAR (URL ?dev 파라미터로 활성화) ── */
+  #dev-bar {
+    display: none;           /* JS에서 DEV 감지 시 flex로 전환 */
+    position: fixed;
+    bottom: 0; left: 0; right: 0;
+    z-index: 9999;
+    background: rgba(30, 10, 0, 0.92);
+    border-top: 1px solid #ff6020;
+    padding: 6px 14px;
+    gap: 10px;
+    align-items: center;
+    font-size: 11px;
+    font-family: 'Share Tech Mono', monospace;
+    color: #ff9050;
+  }
+  #dev-bar .dev-label {
+    font-weight: bold;
+    letter-spacing: .12em;
+    color: #ff6020;
+    margin-right: 4px;
+  }
+  #dev-bar button {
+    background: rgba(255,96,32,.15);
+    border: 1px solid #ff6020;
+    color: #ff9050;
+    font-family: inherit;
+    font-size: 10px;
+    letter-spacing: .08em;
+    padding: 3px 10px;
+    cursor: pointer;
+    border-radius: 3px;
+    transition: background .15s;
+  }
+  #dev-bar button:hover { background: rgba(255,96,32,.35); }
+  #dev-bar #dev-status { flex: 1; color: #a06040; font-size: 10px; }
 </style>
 </head>
 <body>
@@ -159,6 +195,14 @@
     </div>
   </div>
   <div id="msg-bar"></div>
+</div>
+
+<!-- DEV BAR — ?dev 파라미터로 활성화, 프로덕션 빌드에서는 숨겨짐 -->
+<div id="dev-bar">
+  <span class="dev-label">⚙ DEV</span>
+  <button onclick="devResetToday()">오늘 플레이 초기화</button>
+  <button onclick="devResetAll()">전체 초기화</button>
+  <span id="dev-status"></span>
 </div>
 
 <script src="core.js"></script>
@@ -216,6 +260,44 @@ function init() {
   canvas.addEventListener('click',      onCanvasClick);
   canvas.addEventListener('touchstart', onTouchStart, { passive: false });
   window.addEventListener('resize',     resizeCanvas);
+}
+
+// ── Dev Mode ──────────────────────────────────────────────────────
+// URL에 ?dev 파라미터가 있을 때만 노출 (예: daily.html?dev)
+const DEV = new URLSearchParams(location.search).has('dev');
+if (DEV) {
+  document.getElementById('dev-bar').style.display = 'flex';
+}
+
+function devStatus(msg) {
+  const el = document.getElementById('dev-status');
+  el.textContent = msg;
+  setTimeout(() => { el.textContent = ''; }, 2500);
+}
+
+// 오늘 플레이 기록만 삭제 → 재플레이 허용 (streak·best 유지)
+function devResetToday() {
+  const today = dailyMgr.todayKey();
+  let removed = 0;
+  ['easy','normal','hard'].forEach(d => {
+    const key = 'sg_daily_result_' + today + '_' + d;
+    if (localStorage.getItem(key) !== null) {
+      localStorage.removeItem(key);
+      removed++;
+    }
+  });
+  refreshStats();
+  showStartOverlay();
+  devStatus('오늘 기록 삭제 (' + today + ', ' + removed + '개 난이도)');
+}
+
+// 전체 초기화 (streak·best·history 포함)
+function devResetAll() {
+  const keys = Object.keys(localStorage).filter(k => k.startsWith('sg_daily_'));
+  keys.forEach(k => localStorage.removeItem(k));
+  refreshStats();
+  showStartOverlay();
+  devStatus('전체 삭제 (' + keys.length + '개 키)');
 }
 
 function resizeCanvas() {

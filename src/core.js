@@ -275,11 +275,103 @@
     }
   }
 
+  /* ================================================================
+     DailyManager — seeded board, one-attempt lock, streak, share
+     Fully injectable (storage, now) for testing without mocks.
+  ================================================================ */
+  class DailyManager {
+    constructor(adapter, storage, now) {
+      this._adapter = adapter || new LocalAdapter(storage);
+      this._storage = storage || localStorage;
+      this._now = now || (() => new Date());
+    }
+
+    todayKey() {
+      return this._now().toISOString().slice(0, 10); // UTC YYYY-MM-DD
+    }
+
+    makeGame(diff) {
+      const seed = dateSeed(this.todayKey(), diff);
+      return new GameLogic({ ...DIFFICULTIES[diff], rng: seededRandom(seed) });
+    }
+
+    isPlayedToday(diff) {
+      return !!this._storage.getItem('sg_daily_result_' + this.todayKey() + '_' + diff);
+    }
+
+    recordResult(diff, run) {
+      const today = this.todayKey();
+      const seed  = dateSeed(today, diff);
+      const record = { date: today, diff, seed, score: run.score, moves: run.moves, cleared: run.cleared, trail: run.trail || [] };
+
+      this._storage.setItem(
+        'sg_daily_result_' + today + '_' + diff,
+        JSON.stringify({ score: run.score, moves: run.moves, cleared: run.cleared, ts: new Date().toISOString() })
+      );
+      this._updateStreak(today);
+      this._updateBest(diff, run.score);
+
+      const history = JSON.parse(this._storage.getItem('sg_daily_history') || '[]');
+      history.unshift(record);
+      if (history.length > 30) history.pop();
+      this._storage.setItem('sg_daily_history', JSON.stringify(history));
+
+      this._adapter.submit(record);
+    }
+
+    getStats(diff) {
+      const raw    = this._storage.getItem('sg_daily_streak');
+      const streak = raw ? JSON.parse(raw) : { count: 0, lastDate: null };
+      const best   = +(this._storage.getItem('sg_daily_best_' + diff) || 0);
+      const today  = this.todayKey();
+      const todayRaw = this._storage.getItem('sg_daily_result_' + today + '_' + diff);
+      return { streak: streak.count, lastDate: streak.lastDate, best, todayResult: todayRaw ? JSON.parse(todayRaw) : null };
+    }
+
+    buildShareString(diff, run) {
+      const today = this.todayKey();
+      const stats = this.getStats(diff);
+      const EMOJI = { big: '🟩', mid: '🟨', sml: '🟦' };
+      const trail = (run.trail || []).map(t =>
+        t.n >= 10 ? EMOJI.big : t.n >= 5 ? EMOJI.mid : EMOJI.sml
+      ).join('');
+      return [
+        'SameGame · Grid Protocol',
+        'Daily ' + today + ' · ' + diff.toUpperCase(),
+        'Score ' + run.score.toLocaleString() + ' · ' + run.moves + ' moves · 🔥' + stats.streak,
+        trail,
+      ].join('\n');
+    }
+
+    _updateStreak(today) {
+      const raw    = this._storage.getItem('sg_daily_streak');
+      let streak   = raw ? JSON.parse(raw) : { count: 0, lastDate: null };
+      if (streak.lastDate === today) return;
+      const d = new Date(today + 'T00:00:00Z');
+      d.setUTCDate(d.getUTCDate() - 1);
+      const yesterday = d.toISOString().slice(0, 10);
+      streak = { count: streak.lastDate === yesterday ? streak.count + 1 : 1, lastDate: today };
+      this._storage.setItem('sg_daily_streak', JSON.stringify(streak));
+    }
+
+    _updateBest(diff, score) {
+      const key  = 'sg_daily_best_' + diff;
+      const prev = +(this._storage.getItem(key) || 0);
+      if (score > prev) this._storage.setItem(key, score);
+    }
+  }
+
+  class LocalAdapter {
+    constructor(storage) { this._storage = storage; }
+    submit(record) { /* client-only phase: record already persisted in sg_daily_history */ }
+  }
+
   // ── namespace export ────────────────────────────────────────────
   global.SG = global.SG || {};
   Object.assign(global.SG, {
     DIFFICULTIES, scoreFormula,
     seededRandom, dateSeed,
     GameLogic, HintSystem,
+    DailyManager, LocalAdapter,
   });
 })(typeof window !== 'undefined' ? window : global);

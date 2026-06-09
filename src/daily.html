@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>DAILY PROTOCOL — GRID PROTOCOL</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@300;500;700&display=swap');
+  :root {
+    --bg:      #08090d;
+    --panel:   #0d0f18;
+    --border:  #1a2040;
+    --accent:  #00f5c8;
+    --warn:    #ff4060;
+    --dim:     #2a3060;
+    --text:    #c8d4f0;
+    --textdim: #4a5880;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    width: 100%; height: 100%;
+    background: var(--bg); color: var(--text);
+    font-family: 'Share Tech Mono', monospace;
+    overflow: hidden; user-select: none;
+  }
+  body::before {
+    content: ''; position: fixed; inset: 0;
+    background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,.18) 2px, rgba(0,0,0,.18) 4px);
+    pointer-events: none; z-index: 999;
+  }
+  #wrapper {
+    position: relative; z-index: 1;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    width: 100%; height: 100%; gap: 0;
+  }
+  #header {
+    width: 100%; max-width: 820px;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 8px 16px 6px; border-bottom: 1px solid var(--border);
+  }
+  #header h1 {
+    font-family: 'Rajdhani', sans-serif; font-weight: 700;
+    font-size: clamp(14px, 2.5vw, 22px);
+    letter-spacing: .25em; color: var(--accent);
+    text-shadow: 0 0 18px rgba(0,245,200,.5);
+  }
+  #header h1 span { color: var(--textdim); font-weight: 300; }
+  #daily-badge {
+    font-size: 11px; letter-spacing: .1em;
+    color: var(--accent); border: 1px solid var(--accent);
+    padding: 2px 8px; border-radius: 2px;
+  }
+  #stats-bar {
+    width: 100%; max-width: 820px;
+    display: flex; gap: 24px; padding: 6px 16px;
+    border-bottom: 1px solid var(--border);
+    font-size: 12px; color: var(--textdim);
+  }
+  #stats-bar span b { color: var(--text); }
+  #diff-row {
+    display: flex; gap: 8px; padding: 8px 0;
+  }
+  .diff-btn {
+    background: var(--panel); border: 1px solid var(--border);
+    color: var(--textdim); font-family: inherit; font-size: 12px;
+    letter-spacing: .1em; padding: 5px 16px; cursor: pointer;
+    transition: border-color .15s, color .15s;
+  }
+  .diff-btn.active { border-color: var(--accent); color: var(--accent); }
+  #canvas-wrap {
+    flex: 1; width: 100%; max-width: 820px; position: relative; overflow: hidden;
+  }
+  canvas { display: block; width: 100%; height: 100%; }
+  #msg-bar {
+    height: 24px; line-height: 24px;
+    font-size: 11px; letter-spacing: .08em;
+    color: var(--textdim); text-align: center;
+    width: 100%; max-width: 820px;
+  }
+  .overlay {
+    position: absolute; inset: 0;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    background: rgba(8,9,13,.92); z-index: 10; gap: 16px;
+  }
+  .overlay.hidden { display: none; }
+  .ol-title {
+    font-family: 'Rajdhani', sans-serif; font-weight: 700;
+    font-size: clamp(22px, 4vw, 36px); letter-spacing: .3em;
+    color: var(--accent); text-shadow: 0 0 20px rgba(0,245,200,.6);
+  }
+  .ol-sub { font-size: 12px; letter-spacing: .1em; color: var(--textdim); }
+  .ol-score { font-size: 28px; color: var(--text); letter-spacing: .1em; }
+  .ol-streak { font-size: 16px; color: var(--warn); letter-spacing: .05em; }
+  .ol-share-box {
+    background: var(--panel); border: 1px solid var(--border);
+    padding: 12px 20px; font-size: 12px; white-space: pre;
+    color: var(--textdim); max-width: 320px;
+    line-height: 1.7; letter-spacing: .03em;
+  }
+  .btn-ol {
+    background: transparent; border: 1px solid var(--accent);
+    color: var(--accent); font-family: inherit; font-size: 13px;
+    letter-spacing: .15em; padding: 8px 32px; cursor: pointer;
+    transition: background .15s;
+  }
+  .btn-ol:hover { background: rgba(0,245,200,.08); }
+  .btn-ol.secondary {
+    border-color: var(--border); color: var(--textdim);
+  }
+  .btn-ol.secondary:hover { background: rgba(255,255,255,.04); }
+  .btn-row { display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; }
+</style>
+</head>
+<body>
+<div id="wrapper">
+  <div id="header">
+    <h1>SAME PUZZLE <span>— GRID PROTOCOL</span></h1>
+    <span id="daily-badge">DAILY</span>
+  </div>
+  <div id="stats-bar">
+    <span>🔥 STREAK <b id="sv-streak">0</b></span>
+    <span>BEST <b id="sv-best">0</b></span>
+    <span id="sv-date"></span>
+  </div>
+  <div id="diff-row">
+    <button class="diff-btn" id="btn-easy"   onclick="setDiff('easy')">EASY</button>
+    <button class="diff-btn" id="btn-normal" onclick="setDiff('normal')">NORMAL</button>
+    <button class="diff-btn" id="btn-hard"   onclick="setDiff('hard')">HARD</button>
+  </div>
+  <div id="canvas-wrap">
+    <canvas id="gameCanvas"></canvas>
+
+    <!-- START / LOCKED overlay -->
+    <div class="overlay" id="ol-start">
+      <div class="ol-title" id="ol-start-title">DAILY PROTOCOL</div>
+      <div class="ol-sub"   id="ol-start-sub">One attempt · No undo · Same board worldwide</div>
+      <div class="btn-row">
+        <button class="btn-ol" id="btn-begin" onclick="beginPlay()">BEGIN</button>
+        <button class="btn-ol secondary" id="btn-practice" onclick="beginPractice()" style="display:none">PRACTICE</button>
+        <button class="btn-ol secondary" onclick="location.href='samegame.html'">ENDLESS</button>
+      </div>
+    </div>
+
+    <!-- SUMMARY overlay (shown after play ends) -->
+    <div class="overlay hidden" id="ol-summary">
+      <div class="ol-title" id="ol-result-title">COMPLETE</div>
+      <div class="ol-score"  id="ol-score">0</div>
+      <div class="ol-sub"    id="ol-moves-line"></div>
+      <div class="ol-streak" id="ol-streak-line"></div>
+      <div class="ol-share-box" id="ol-share-text"></div>
+      <div class="btn-row">
+        <button class="btn-ol" onclick="copyShare()">📋 COPY</button>
+        <button class="btn-ol secondary" onclick="beginPractice()">PRACTICE</button>
+        <button class="btn-ol secondary" onclick="location.href='samegame.html'">ENDLESS</button>
+      </div>
+      <div class="ol-sub" id="ol-copied" style="color:var(--accent);opacity:0;transition:opacity .3s">Copied!</div>
+    </div>
+  </div>
+  <div id="msg-bar"></div>
+</div>
+
+<script src="core.js"></script>
+<script src="render.js"></script>
+<script>
+'use strict';
+const { DIFFICULTIES, scoreFormula, GameLogic, Renderer, DailyManager, LocalAdapter } = SG;
+
+// ── DOM refs ──────────────────────────────────────────────────────
+const canvas        = document.getElementById('gameCanvas');
+const canvasWrap    = document.getElementById('canvas-wrap');
+const msgBar        = document.getElementById('msg-bar');
+const olStart       = document.getElementById('ol-start');
+const olStartTitle  = document.getElementById('ol-start-title');
+const olStartSub    = document.getElementById('ol-start-sub');
+const btnBegin      = document.getElementById('btn-begin');
+const btnPractice   = document.getElementById('btn-practice');
+const olSummary     = document.getElementById('ol-summary');
+const olResultTitle = document.getElementById('ol-result-title');
+const olScore       = document.getElementById('ol-score');
+const olMovesLine   = document.getElementById('ol-moves-line');
+const olStreakLine  = document.getElementById('ol-streak-line');
+const olShareText   = document.getElementById('ol-share-text');
+const olCopied      = document.getElementById('ol-copied');
+const svStreak      = document.getElementById('sv-streak');
+const svBest        = document.getElementById('sv-best');
+const svDate        = document.getElementById('sv-date');
+
+// ── State ─────────────────────────────────────────────────────────
+let renderer    = null;
+let logic       = null;
+let dailyMgr    = null;
+let currentDiff = localStorage.getItem('sg_daily_lastdiff') || 'easy';
+let isRanked    = false;
+let gameActive  = false;
+let lastTime    = 0;
+let trail       = [];   // [{r, c, t, n}]
+let lastRun     = null;
+
+// ── Boot ──────────────────────────────────────────────────────────
+function init() {
+  dailyMgr = new DailyManager(new LocalAdapter(), localStorage);
+  renderer  = new Renderer(canvas);
+  resizeCanvas();
+  applyDiffUI();
+  refreshStats();
+  showStartOverlay();
+  requestAnimationFrame(loop);
+  canvas.addEventListener('click',      onCanvasClick);
+  canvas.addEventListener('touchstart', onTouchStart, { passive: false });
+  window.addEventListener('resize',     resizeCanvas);
+}
+
+function resizeCanvas() {
+  if (!renderer || !logic) {
+    renderer && renderer.resize(canvasWrap.offsetWidth, canvasWrap.offsetHeight, 15, 12);
+    return;
+  }
+  renderer.resize(canvasWrap.offsetWidth, canvasWrap.offsetHeight, logic.cfg.cols, logic.cfg.rows);
+}
+
+function loop(ts) {
+  const dt = Math.min((ts - lastTime) / 1000, 0.05);
+  lastTime = ts;
+  if (renderer && logic) {
+    renderer.update(dt, logic.board, logic.cfg.cols, logic.cfg.rows);
+    renderer.draw(logic.board, logic.cfg.cols, logic.cfg.rows);
+  }
+  requestAnimationFrame(loop);
+}
+
+// ── Difficulty ────────────────────────────────────────────────────
+function setDiff(d) {
+  currentDiff = d;
+  localStorage.setItem('sg_daily_lastdiff', d);
+  applyDiffUI();
+  refreshStats();
+  showStartOverlay();
+}
+
+function applyDiffUI() {
+  ['easy','normal','hard'].forEach(d => {
+    document.getElementById('btn-' + d).classList.toggle('active', d === currentDiff);
+  });
+}
+
+function refreshStats() {
+  const stats = dailyMgr.getStats(currentDiff);
+  svStreak.textContent = stats.streak;
+  svBest.textContent   = stats.best.toLocaleString();
+  svDate.textContent   = dailyMgr.todayKey();
+}
+
+// ── Overlay helpers ───────────────────────────────────────────────
+function showStartOverlay() {
+  olSummary.classList.add('hidden');
+  olStart.classList.remove('hidden');
+  const played = dailyMgr.isPlayedToday(currentDiff);
+  if (played) {
+    olStartTitle.textContent  = 'ALREADY PLAYED';
+    olStartSub.textContent    = "Today's board is locked. Practice anytime.";
+    btnBegin.style.display    = 'none';
+    btnPractice.style.display = '';
+  } else {
+    olStartTitle.textContent  = 'DAILY PROTOCOL';
+    olStartSub.textContent    = 'One attempt · No undo · Same board worldwide';
+    btnBegin.style.display    = '';
+    btnPractice.style.display = 'none';
+  }
+}
+
+function showSummary(run) {
+  const stats = dailyMgr.getStats(currentDiff);
+  olStart.classList.add('hidden');
+  olSummary.classList.remove('hidden');
+  olResultTitle.textContent = run.cleared ? 'CLEARED!' : 'GAME OVER';
+  olScore.textContent       = run.score.toLocaleString();
+  olMovesLine.textContent   = run.moves + ' moves';
+  olStreakLine.textContent   = '🔥 Streak: ' + stats.streak + (run.cleared ? '  🎉' : '');
+  olShareText.textContent   = dailyMgr.buildShareString(currentDiff, run);
+  lastRun = run;
+  refreshStats();
+}
+
+// ── Play flow ─────────────────────────────────────────────────────
+function beginPlay() {
+  isRanked = true;
+  trail    = [];
+  startBoard();
+}
+
+function beginPractice() {
+  isRanked = false;
+  trail    = [];
+  startBoard();
+}
+
+function startBoard() {
+  logic = dailyMgr.makeGame(currentDiff);
+  resizeCanvas();
+  renderer.hintCells  = [];
+  renderer.hoverGroup = [];
+  gameActive = true;
+  olStart.classList.add('hidden');
+  olSummary.classList.add('hidden');
+  msgBar.textContent = isRanked ? 'RANKED · no undo' : 'PRACTICE · unranked';
+}
+
+function endGame(cleared) {
+  gameActive = false;
+  renderer.hintCells = [];
+  const run = { score: logic.score, moves: logic.moveCount, cleared, trail };
+  if (isRanked && !dailyMgr.isPlayedToday(currentDiff)) {
+    dailyMgr.recordResult(currentDiff, run);
+  }
+  showSummary(run);
+}
+
+// ── Input ─────────────────────────────────────────────────────────
+function onCanvasClick(e) {
+  const rect   = canvas.getBoundingClientRect();
+  const scaleX = canvas.width  / rect.width;
+  const scaleY = canvas.height / rect.height;
+  handleClick((e.clientX - rect.left) * scaleX, (e.clientY - rect.top) * scaleY);
+}
+
+function onTouchStart(e) {
+  e.preventDefault();
+  const t     = e.touches[0];
+  const rect  = canvas.getBoundingClientRect();
+  const scaleX = canvas.width  / rect.width;
+  const scaleY = canvas.height / rect.height;
+  handleClick((t.clientX - rect.left) * scaleX, (t.clientY - rect.top) * scaleY);
+}
+
+function handleClick(px, py) {
+  if (!gameActive || !logic || !renderer) return;
+  const { r, c } = renderer.cellFromPointer(px, py);
+  if (r < 0 || r >= logic.cfg.rows || c < 0 || c >= logic.cfg.cols) return;
+
+  // peek color BEFORE applyInput removes the tile (for animation)
+  const colorBeforeRemove = (logic.board[r] && logic.board[r][c] !== undefined && logic.board[r][c] !== -1)
+    ? logic.board[r][c]
+    : 0;
+
+  const result = logic.applyInput(r, c);
+  if (!result.valid) {
+    msgBar.textContent = 'Group too small (min ' + logic.cfg.minGroup + ')';
+    return;
+  }
+
+  // record trail entry
+  trail.push({ r, c, t: Date.now(), n: result.group.length });
+
+  renderer.spawnRemoveAnim(result.group, colorBeforeRemove);
+  renderer.triggerShake();
+  msgBar.textContent = '+' + result.gained + '  (' + result.group.length + ' tiles)';
+
+  for (const ev of result.events) {
+    if (ev.type === 'BOARD_CLEAR') { endGame(true);  return; }
+    if (ev.type === 'GAME_OVER')   { endGame(false); return; }
+  }
+}
+
+// ── Share ─────────────────────────────────────────────────────────
+function copyShare() {
+  const text = olShareText.textContent;
+  if (navigator.clipboard) {
+    navigator.clipboard.writeText(text).then(flashCopied, () => fallbackCopy(text));
+  } else {
+    fallbackCopy(text);
+  }
+}
+
+function fallbackCopy(text) {
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  ta.style.cssText = 'position:fixed;opacity:0;top:0;left:0';
+  document.body.appendChild(ta);
+  ta.select();
+  try { document.execCommand('copy'); } catch (e) {}
+  document.body.removeChild(ta);
+  flashCopied();
+}
+
+function flashCopied() {
+  olCopied.style.opacity = '1';
+  setTimeout(() => { olCopied.style.opacity = '0'; }, 1500);
+}
+
+init();
+</script>
+</body>
+</html>

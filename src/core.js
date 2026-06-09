@@ -207,6 +207,77 @@
       this.score = snap.score;
       this.moveCount = snap.moveCount;
     }
+
+    // ── Clearability checker (static, pure — no side effects) ────────
+    // Greedy simulation: 매 턴 가장 큰 유효 그룹을 제거.
+    // 보드가 비워지면 true(클리어 가능 확인), 막히면 false.
+    // 주의: 그리디 전략으로 풀리지 않는 보드도 이론상 클리어 가능할 수 있으나,
+    //       데일리 보드는 그리디로 검증된 것만 제공 → 반드시 클리어 가능.
+    static isGreedyClearable(board, cfg) {
+      const { rows, cols, minGroup } = cfg;
+      // 딥 카피 — 원본 보드 불변
+      const b = board.map(r => [...r]);
+
+      while (true) {
+        // ─ 1. 전체 보드에서 가장 큰 유효 그룹 탐색 (flood-fill) ─
+        const visited = new Set();
+        let bestGroup = null;
+
+        for (let r = 0; r < rows; r++) {
+          for (let c = 0; c < cols; c++) {
+            if (b[r][c] === -1) continue;
+            const key = r * 1000 + c;
+            if (visited.has(key)) continue;
+
+            const color = b[r][c];
+            const group = [];
+            const stack = [[r, c]];
+            while (stack.length) {
+              const [cr, cc] = stack.pop();
+              const k = cr * 1000 + cc;
+              if (visited.has(k)) continue;
+              if (cr < 0 || cr >= rows || cc < 0 || cc >= cols) continue;
+              if (b[cr][cc] !== color) continue;
+              visited.add(k);
+              group.push([cr, cc]);
+              stack.push([cr-1,cc],[cr+1,cc],[cr,cc-1],[cr,cc+1]);
+            }
+
+            if (group.length >= minGroup &&
+                (!bestGroup || group.length > bestGroup.length)) {
+              bestGroup = group;
+            }
+          }
+        }
+
+        // ─ 2. 유효 그룹 없으면 종료 ─
+        if (!bestGroup) {
+          return b.every(row => row.every(v => v === -1));
+        }
+
+        // ─ 3. 그룹 제거 ─
+        for (const [r, c] of bestGroup) b[r][c] = -1;
+
+        // ─ 4. 중력 ─
+        for (let c = 0; c < cols; c++) {
+          let wr = rows - 1;
+          for (let r = rows - 1; r >= 0; r--) {
+            if (b[r][c] !== -1) { b[wr][c] = b[r][c]; if (wr !== r) b[r][c] = -1; wr--; }
+          }
+          while (wr >= 0) b[wr--][c] = -1;
+        }
+
+        // ─ 5. 빈 컬럼 제거 ─
+        let wc = 0;
+        for (let c = 0; c < cols; c++) {
+          const isEmpty = b.every(row => row[c] === -1);
+          if (!isEmpty) {
+            if (wc !== c) for (let r = 0; r < rows; r++) { b[r][wc] = b[r][c]; b[r][c] = -1; }
+            wc++;
+          }
+        }
+      }
+    }
   }
 
   // ── HintSystem ───────────────────────────────────────────────────
@@ -291,8 +362,16 @@
     }
 
     makeGame(diff) {
-      const seed = dateSeed(this.todayKey(), diff);
-      return new GameLogic({ ...DIFFICULTIES[diff], rng: seededRandom(seed) });
+      const baseSeed = dateSeed(this.todayKey(), diff);
+      const cfg      = DIFFICULTIES[diff];
+      // 그리디 시뮬레이션으로 클리어 가능 보드가 나올 때까지 시드 증가
+      // 같은 날 같은 난이도라면 offset이 동일 → 전 세계 유저 동일 보드 보장
+      for (let offset = 0; offset < 200; offset++) {
+        const logic = new GameLogic({ ...cfg, rng: seededRandom(baseSeed + offset) });
+        if (GameLogic.isGreedyClearable(logic.board, logic.cfg)) return logic;
+      }
+      // 200회 시도 후에도 없으면 base 시드 그대로 반환 (실질적으로 발생 안 함)
+      return new GameLogic({ ...cfg, rng: seededRandom(baseSeed) });
     }
 
     isPlayedToday(diff) {

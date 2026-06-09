@@ -166,4 +166,46 @@ function makeFakeStorage() {
   console.log('✓ buildShareString');
 }
 
+// ── isGreedyClearable ─────────────────────────────────────────────
+{
+  const cfg2 = { rows: 2, cols: 2, minGroup: 2 };
+
+  // 클리어 가능: 같은 색 2개가 인접
+  assert.ok(
+    GameLogic.isGreedyClearable([[-1,-1],[0,0]], cfg2),
+    'isGreedyClearable: 2-tile same-color board → true'
+  );
+
+  // 클리어 불가: 각 타일이 고립
+  assert.ok(
+    !GameLogic.isGreedyClearable([[-1,-1],[0,1]], cfg2),
+    'isGreedyClearable: isolated tiles → false'
+  );
+
+  // 빈 보드: 이미 클리어
+  assert.ok(
+    GameLogic.isGreedyClearable([[-1,-1],[-1,-1]], cfg2),
+    'isGreedyClearable: empty board → true'
+  );
+
+  console.log('✓ isGreedyClearable');
+}
+
+// ── makeGame returns clearable board ─────────────────────────────
+{
+  const storage = makeFakeStorage();
+  const dm = new DailyManager(
+    new LocalAdapter(storage), storage,
+    () => new Date('2026-06-09T08:00:00Z')
+  );
+  ['easy', 'normal', 'hard'].forEach(diff => {
+    const logic = dm.makeGame(diff);
+    assert.ok(
+      GameLogic.isGreedyClearable(logic.board, logic.cfg),
+      'makeGame(' + diff + '): board is greedy-clearable'
+    );
+  });
+  console.log('✓ makeGame returns clearable boards (easy/normal/hard)');
+}
+
 console.log('\nAll tests passed.');

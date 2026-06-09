@@ -61,19 +61,31 @@
   }
 
   class FloatText {
-    constructor(x, y, text, color) {
-      Object.assign(this, { x, y, text, color, life: 900, maxLife: 900, vy: -70 });
+    // scale: 1 = small group (2–3 tiles), up to ~3.5 for large groups (10+ tiles)
+    constructor(x, y, text, color, scale = 1) {
+      const life = 900 + Math.min(scale, 3.5) * 160; // larger group → longer display
+      const vy   = -68 - scale * 14;                  // larger group → floats faster
+      Object.assign(this, { x, y, text, color, scale, life, maxLife: life, vy });
     }
     update(dt) { this.y += this.vy * dt; this.life -= dt * 1000; }
-    get alive() { return this.life > 0; }
-    draw(ctx, canvas) {
-      const alpha = Math.min(1, this.life / 300);
+    get alive()  { return this.life > 0; }
+    draw(ctx) {
+      const alpha    = Math.min(1, this.life / 280);
+      // Font grows slightly as it rises (feels more dynamic)
+      const baseSize = 13 + this.scale * 4.5;
+      const fontSize = Math.round(baseSize + (1 - this.life / this.maxLife) * 3);
+      ctx.save();
       ctx.globalAlpha = alpha;
+      ctx.font        = `bold ${fontSize}px 'Rajdhani', sans-serif`;
+      ctx.textAlign   = 'center';
+      // Glow halo for large-score texts (scale ≥ 2)
+      if (this.scale >= 2) {
+        ctx.shadowColor = this.color;
+        ctx.shadowBlur  = 6 + this.scale * 3;
+      }
       ctx.fillStyle = this.color;
-      ctx.font = `bold ${Math.round(14 + (1 - this.life / this.maxLife) * 4)}px 'Rajdhani', sans-serif`;
-      ctx.textAlign = 'center';
       ctx.fillText(this.text, this.x, this.y);
-      ctx.globalAlpha = 1;
+      ctx.restore();
     }
   }
 
@@ -129,12 +141,17 @@
         this.particles.emit(cx, cy, COLOR_PALETTE[colorIdx], 14);
       });
       if (group.length > 0) {
-        const [fr, fc] = group[0];
-        const fx = this.offX + fc * ts + ts / 2;
-        const fy = this.offY + fr * ts + ts / 2;
+        // Use group centroid so the score floats from the middle of removed tiles
+        const avgR = group.reduce((s, [r])    => s + r, 0) / group.length;
+        const avgC = group.reduce((s, [, c])  => s + c, 0) / group.length;
+        const fx   = this.offX + avgC * ts + ts / 2;
+        const fy   = this.offY + avgR * ts + ts / 2;
+        // Scale: 1 for tiny groups, up to ~3.5 for large ones
+        const scale = Math.min(3.5, 1 + (group.length - 2) * 0.22);
         this.floatTexts.push(new FloatText(fx, fy,
-          '+' + scoreFormula(group.length),
-          COLOR_PALETTE[colorIdx].glow
+          '+' + scoreFormula(group.length).toLocaleString(),
+          COLOR_PALETTE[colorIdx].glow,
+          scale
         ));
       }
     }
@@ -294,7 +311,7 @@
       this.particles.draw(ctx);
 
       // ── float texts ──
-      for (const ft of this.floatTexts) ft.draw(ctx, this.canvas);
+      for (const ft of this.floatTexts) ft.draw(ctx);
 
       // ── tutorial overlay (drawn last, on top of everything) ──
       if (window.tutMgr) window.tutMgr.drawHint(ctx, this);

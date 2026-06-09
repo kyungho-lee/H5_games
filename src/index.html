@@ -2,6 +2,7 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
+<link rel="icon" href="data:,">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <title>DAILY PROTOCOL — GRID PROTOCOL</title>
 <style>
@@ -111,6 +112,17 @@
   }
   .btn-ol.secondary:hover { background: rgba(255,255,255,.04); }
   .btn-row { display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; }
+
+  /* ── ENDLESS 유도 블링크 ─────────────────────────────────────── */
+  @keyframes endlessGuide {
+    0%   { border-color: var(--border); color: var(--textdim); box-shadow: none;                      transform: scale(1);    }
+    35%  { border-color: var(--accent); color: var(--accent);  box-shadow: 0 0 14px rgba(0,245,200,.5); transform: scale(1.05); }
+    55%  { border-color: var(--accent); color: var(--accent);  box-shadow: 0 0 14px rgba(0,245,200,.5); transform: scale(1.05); }
+    100% { border-color: var(--border); color: var(--textdim); box-shadow: none;                      transform: scale(1);    }
+  }
+  .btn-ol.endless-guide {
+    animation: endlessGuide 1.8s ease-in-out infinite;
+  }
 
   /* ── Summary overlay: scrollable to accommodate leaderboard ── */
   #ol-summary {
@@ -278,7 +290,7 @@
       <div class="btn-row">
         <button class="btn-ol" id="btn-begin" onclick="beginPlay()">BEGIN</button>
         <button class="btn-ol secondary" id="btn-practice" onclick="beginPractice()" style="display:none">PRACTICE</button>
-        <button class="btn-ol secondary" onclick="location.href='index.html'">ENDLESS</button>
+        <button class="btn-ol secondary" id="btn-endless-start" onclick="location.href='endless.html'">ENDLESS</button>
       </div>
     </div>
 
@@ -313,7 +325,7 @@
       <div class="btn-row">
         <button class="btn-ol" onclick="copyShare()">📋 COPY</button>
         <button class="btn-ol secondary" onclick="beginPractice()">PRACTICE</button>
-        <button class="btn-ol secondary" onclick="location.href='index.html'">ENDLESS</button>
+        <button class="btn-ol secondary" id="btn-endless-summary" onclick="location.href='endless.html'">ENDLESS</button>
       </div>
       <div class="ol-sub" id="ol-copied" style="color:var(--accent);opacity:0;transition:opacity .3s">Copied!</div>
     </div>
@@ -351,9 +363,11 @@
   <span id="dev-status"></span>
 </div>
 
+<!-- Playgama Bridge SDK — static tag required by Playgama validator -->
+<script src="https://bridge.playgama.com/v1/stable/playgama-bridge.js"></script>
 <!-- Ad SDK wrappers (domain-checked dynamic load — skipped on file://) -->
 <script src="crazygames.js"></script>   <!-- CrazyGames SDK (priority) -->
-<script src="playgama.js"></script>     <!-- Playgama Bridge (fallback) -->
+<script src="playgama.js"></script>     <!-- Playgama Bridge wrapper -->
 <!-- Firebase wrapper (SDK dynamically loaded by firebase.js after domain check) -->
 <script src="firebase-config.js"></script>
 <script src="firebase.js"></script>
@@ -514,9 +528,11 @@ function showStartOverlay() {
   olSummary.classList.add('hidden');
   olStart.classList.remove('hidden');
   const played = dailyMgr.isPlayedToday(currentDiff);
+  // 어떤 난이도라도 오늘 플레이됐으면 ENDLESS 유도
+  const anyPlayed = ['easy', 'normal', 'hard'].some(d => dailyMgr.isPlayedToday(d));
   if (played) {
     olStartTitle.textContent  = 'ALREADY PLAYED';
-    olStartSub.textContent    = "Today's board is locked. Practice anytime.";
+    olStartSub.textContent    = "Today's board is locked — try Endless Mode!";
     btnBegin.style.display    = 'none';
     btnPractice.style.display = '';
   } else {
@@ -525,6 +541,14 @@ function showStartOverlay() {
     btnBegin.style.display    = '';
     btnPractice.style.display = 'none';
   }
+  // ENDLESS 버튼 블링크 유도 (오늘 플레이 완료 시)
+  const btnES = document.getElementById('btn-endless-start');
+  if (btnES) {
+    btnES.classList.toggle('endless-guide', anyPlayed);
+    btnES.textContent = anyPlayed ? 'ENDLESS ↗' : 'ENDLESS';
+  }
+  // 유휴 화면 — 배너 광고 표시
+  SG.CG.showBanner();
 }
 
 function showSummary(run) {
@@ -549,6 +573,15 @@ function showSummary(run) {
   adRetryRow.classList.toggle('hidden', !canRetry());
   const btnAdRetry = document.getElementById('btn-ad-retry');
   if (btnAdRetry) { btnAdRetry.disabled = false; btnAdRetry.textContent = '📺 광고 시청 후 재도전'; }
+
+  // 결과 화면 ENDLESS 버튼 — 게임 완료 직후 항상 블링크로 유도
+  const btnES2 = document.getElementById('btn-endless-summary');
+  if (btnES2) {
+    btnES2.classList.add('endless-guide');
+    btnES2.textContent = 'ENDLESS ↗';
+  }
+  // 유휴 화면 — 배너 광고 표시
+  SG.CG.showBanner();
 }
 
 // ── Play flow ─────────────────────────────────────────────────────
@@ -575,11 +608,13 @@ function startBoard() {
   olSummary.classList.add('hidden');
   msgBar.textContent = isRanked ? 'RANKED · no undo' : 'PRACTICE · unranked';
 
+  // 데일리 모드: 게임 플레이 중에도 배너 유지 (짧은 단판 형식)
+  SG.CG.showBanner();
   // CrazyGames: 게임플레이 시작 알림
   SG.CG.gameplayStart();
 }
 
-function endGame(cleared) {
+async function endGame(cleared) {
   // CrazyGames: 게임플레이 종료 알림
   SG.CG.gameplayStop();
 
@@ -592,7 +627,23 @@ function endGame(cleared) {
     // recordResult 내부에서 첫 플레이 vs 재도전을 구분해 처리
     // (재도전: 최고점일 때만 갱신, streak 중복 증가 없음)
     dailyMgr.recordResult(currentDiff, run);
+    // Playgama Bridge storage: best scores 저장 (cross-device persistence)
+    // recordResult() 직후 호출 → localStorage가 최신 상태임을 보장
+    if (SG.PG && SG.PG.isAvailable()) {
+      var _pgSave = {};
+      ['easy', 'normal', 'hard'].forEach(function (d) {
+        var _b = localStorage.getItem('sg_daily_best_' + d);
+        if (_b) _pgSave['sg_daily_best_' + d] = parseInt(_b) || 0;
+      });
+      if (Object.keys(_pgSave).length > 0) {
+        SG.PG.storageSet(_pgSave).catch(function () {});
+      }
+    }
   }
+
+  // Playgama best practice: 게임 종료 시 인터스티셜 (논리적 정지 지점)
+  await SG.CG.requestMidgameAd();
+
   showSummary(run);
 
   // 랭킹 표시: Firebase 연결 시 실제 데이터, 미연결 시 더미 미리보기
@@ -735,7 +786,7 @@ async function submitToFirebase(run) {
     });
     renderLeaderboard(result);
   } catch (e) {
-    // Firebase 실패 → 더미 데이터로 조용히 폴백
+    // Firebase 실패 (네트워크·CORS·규칙 오류 등) → 더미 데이터로 조용히 폴백
     console.warn('[SG] Firebase submission failed (fallback to demo):', e);
     renderLeaderboard(makeDummyResult(run));
   }
@@ -957,13 +1008,47 @@ function flashCopied() {
 }
 
 (async () => {
-  await SG.CG.init();                              // CrazyGames SDK (priority)
-  if (!SG.CG.isAvailable() && window.SG && SG.PG) {
-    await SG.PG.init();                            // Playgama Bridge (fallback)
+  // Playgama Bridge 정적 로드 감지 → CrazyGames SDK 대기 없이 즉시 init
+  // (Playgama QA 검증기가 30초 이내 game_ready 수신 필요)
+  if (window.bridge && typeof window.bridge.initialize === 'function') {
+    await SG.PG.init();                            // Playgama Bridge 우선
+  } else {
+    await SG.CG.init();                            // CrazyGames SDK
+    if (!SG.CG.isAvailable() && SG.PG) {
+      await SG.PG.init();                          // 기타 플랫폼 폴백
+    }
   }
   SG.CG.loadingStart();    // notify asset loading started
   init();                  // sync init (Canvas, overlay, RAF loop)
-  SG.CG.loadingStop();     // notify loading complete / game_ready
+  SG.CG.loadingStop();     // notify loading complete / game_ready (Bridge: sendMessage)
+
+  // Playgama 플랫폼 이벤트 — 오디오 상태 단일 핸들러
+  // 광고(인터스티셜·리워드), 탭 전환, 시스템 pause 모두 커버
+  if (SG.PG) {
+    SG.PG._onAudioStateChanged = (isEnabled) => {
+      if (sound) sound.setMuted(!isEnabled);
+    };
+  }
+
+  // Playgama Bridge storage: 다른 기기 / 세션에서 저장된 daily best scores 복원
+  // localStorage보다 높은 값이 있으면 덮어쓰고 UI를 갱신합니다.
+  if (SG.PG && SG.PG.isAvailable()) {
+    SG.PG.storageGet(['sg_daily_best_easy', 'sg_daily_best_normal', 'sg_daily_best_hard'])
+      .then(function (data) {
+        if (!data) return;
+        var updated = false;
+        ['easy', 'normal', 'hard'].forEach(function (d) {
+          var pgBest = parseInt(data['sg_daily_best_' + d]) || 0;
+          var lcBest = parseInt(localStorage.getItem('sg_daily_best_' + d)) || 0;
+          if (pgBest > lcBest) {
+            localStorage.setItem('sg_daily_best_' + d, pgBest);
+            updated = true;
+          }
+        });
+        if (updated) refreshStats();  // 갱신된 best score UI 반영
+      })
+      .catch(function () {});
+  }
 })();
 </script>
 </body>

@@ -30,6 +30,11 @@
       this._muted = !this._muted;
       return this._muted;
     }
+    // Programmatic mute (used by ad callbacks to mute during ads)
+    setMuted(val) {
+      this._muted = !!val;
+      return this._muted;
+    }
 
     // Core tone synthesizer
     // type: 'square'|'sawtooth'|'triangle'  (all 8-bit flavors)

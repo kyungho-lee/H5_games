@@ -2,6 +2,7 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
+<link rel="icon" href="data:,">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <title>SAME PUZZLE — GRID PROTOCOL</title>
 <style>
@@ -304,6 +305,39 @@
   }
   #level-flash.show { opacity: 1; }
 
+  /* ── 2× SCORE BONUS EFFECT ─────────────────────────────────────── */
+  #double-bonus-fx {
+    position: absolute; inset: 0;
+    display: none;
+    align-items: center; justify-content: center;
+    pointer-events: none; z-index: 300;
+    background: radial-gradient(ellipse at center,
+      rgba(255,224,32,.15) 0%, transparent 70%);
+  }
+  #double-bonus-fx.show { display: flex; }
+
+  #double-bonus-label {
+    font-family: 'Rajdhani', sans-serif;
+    font-size: clamp(32px, 7vw, 64px);
+    font-weight: 700;
+    color: #ffe020;
+    letter-spacing: .12em;
+    text-align: center;
+    line-height: 1.1;
+    text-shadow:
+      0 0 18px #ffe020,
+      0 0 50px rgba(255,200,0,.6),
+      0 0 90px rgba(255,160,0,.3);
+    animation: dblLabelAnim 2s ease-out forwards;
+  }
+  @keyframes dblLabelAnim {
+    0%   { transform: scale(.25) translateY(20px); opacity: 0; }
+    18%  { transform: scale(1.22) translateY(0);   opacity: 1; }
+    32%  { transform: scale(1.0)  translateY(0);   opacity: 1; }
+    78%  { transform: scale(1.0)  translateY(0);   opacity: 1; }
+    100% { transform: scale(.9)   translateY(-12px); opacity: 0; }
+  }
+
   /* ── NEW BEST pulse ── */
   @keyframes bestPulse {
     0%,100% { opacity: 1; text-shadow: 0 0 12px #ffe020; }
@@ -430,6 +464,9 @@
         <button class="btn"        id="btn-hard"   onclick="setDiff('hard')">HARD</button>
       </div>
       <button class="btn" id="overlay-action-btn" onclick="overlayAction()">▶ INITIATE</button>
+      <!-- Rewarded ad buttons — shown only when SDK active -->
+      <button class="btn" id="btn-ad-double"   onclick="requestDoubleScore()" style="display:none;margin-top:6px;color:#ffe020;border-color:#ffe020">📺 2× SCORE</button>
+      <button class="btn" id="btn-ad-continue" onclick="requestContinue()"    style="display:none;margin-top:6px;color:#00c8ff;border-color:#00c8ff">📺 CONTINUE</button>
       <div id="tut-skip-link" style="display:none;margin-top:4px">
         <button onclick="skipTutorial()" style="background:none;border:none;color:var(--textdim);font-size:10px;letter-spacing:.1em;cursor:pointer;font-family:'Share Tech Mono',monospace;text-decoration:underline">SKIP</button>
       </div>
@@ -439,6 +476,8 @@
     <div id="combo-pop"></div>
     <!-- LEVEL TRANSITION FLASH -->
     <div id="level-flash"></div>
+    <!-- 2× SCORE BONUS EFFECT -->
+    <div id="double-bonus-fx"><div id="double-bonus-label">×2<br>SCORE BONUS!</div></div>
   </div>
 
   <!-- FOOTER -->
@@ -452,6 +491,8 @@
 
 </div>
 
+<!-- Playgama Bridge — static tag required by Playgama QA validator -->
+<script src="https://bridge.playgama.com/v1/stable/playgama-bridge.js"></script>
 <!-- Ad SDK wrappers (domain-checked dynamic load — skipped on file://) -->
 <script src="crazygames.js"></script>   <!-- CrazyGames SDK (priority) -->
 <script src="playgama.js"></script>     <!-- Playgama Bridge (fallback) -->
@@ -929,6 +970,13 @@ let sessionScore  = 0;   // 이번 세션 총 점수
 let level         = 0;   // 현재 레벨
 let overlayMode   = 'start'; // 'start' | 'levelclear' | 'gameover'
 
+// ── 광고 관련 상태 ────────────────────────────────────────────────
+// 인터스티셜 쿨다운은 Playgama Bridge SDK가 내부적으로 관리
+// (setMinimumDelayBetweenInterstitial — playgama.js init 시 설정)
+let _lastLevelScore     = 0;    // 최근 레벨 획득 점수 (2× 보상 계산용)
+let _continueUsed       = false; // 이번 세션에서 CONTINUE 광고를 이미 사용했는지
+let _canContinue        = false; // CONTINUE 버튼 표시 가능 여부
+
 // ── 난이도별 최고 기록 (localStorage) ──
 // 키: samegame_best_easy / samegame_best_normal / samegame_best_hard
 function getBest(diff) {
@@ -936,6 +984,12 @@ function getBest(diff) {
 }
 function setBest(diff, score) {
   localStorage.setItem('samegame_best_' + diff, score);
+  // Playgama Bridge storage sync — cross-device / cross-session persistence
+  if (SG.PG && SG.PG.isAvailable()) {
+    const _pgKey = {};
+    _pgKey['samegame_best_' + diff] = score;
+    SG.PG.storageSet(_pgKey).catch(function () {});
+  }
 }
 
 // ── Init ─────────────────────────────────────────────────────────
@@ -1218,8 +1272,10 @@ function endTutorial() {
 
 // 세션 전체 시작 (난이도 선택 후 첫 번째 레벨)
 function startGame() {
-  sessionScore = 0;
-  level        = 0;
+  sessionScore    = 0;
+  level           = 0;
+  _continueUsed   = false;
+  _canContinue    = false;
   svBest.textContent = getBest(currentDiff).toLocaleString();
   startLevel();
 }
@@ -1238,8 +1294,14 @@ async function startLevel() {
     // 튜토리얼 종료 보장
     window.tutMgr = null;
 
-    // 레벨 2 이상: 레벨 클리어 직후 미드게임 광고 요청 (첫 레벨은 광고 없음)
-    if (level > 0) await SG.CG.requestMidgameAd();
+    // 게임 시작 전 — 배너 숨김 (인터스티셜 전에 미리 숨겨 overlap 방지)
+    SG.CG.hideBanner();
+
+    // 레벨 2 이상: 레벨 클리어 직후 인터스티셜 (첫 레벨은 game start이므로 생략)
+    // 쿨다운은 SDK setMinimumDelayBetweenInterstitial로 관리 — 게임 코드에서 타이머 불필요
+    if (level > 0) {
+      await SG.CG.requestMidgameAd();
+    }
 
     level++;
     const cfg = DIFFICULTIES[currentDiff];
@@ -1345,14 +1407,14 @@ async function _submitEndlessLb(score, lvl) {
     const result = await SG.FB.submitEndlessScore({ diff: currentDiff, score, level: lvl });
     _renderEndlessLb(result);
   } catch (e) {
-    // Firebase 실패 → 더미 데이터로 조용히 폴백
+    // Firebase 실패 → 더미 데이터로 조용히 폴백 (에러 메시지 미표시)
     console.warn('[SG] Endless LB submit failed (fallback to demo):', e);
     _renderEndlessLb(_makeDummyEndless(score, lvl));
   }
 }
 
 // cleared: 보드를 모두 제거했는지 여부
-function endGame(cleared) {
+async function endGame(cleared) {
   gameActive = false;
   canPick    = false;
   renderer.hoverGroup = [];
@@ -1362,13 +1424,19 @@ function endGame(cleared) {
   updateUI(); // 최고 기록 갱신 포함
 
   // 세션 누적에 이번 레벨 점수 반영
-  sessionScore += levelScore;
+  sessionScore    += levelScore;
+  _lastLevelScore  = levelScore;  // 2× 보상 계산용으로 저장
 
   if (cleared) {
     // 레벨 클리어 → 오버레이 잠깐 보여준 뒤 다음 레벨
     showOverlay('levelclear', levelScore);
   } else {
-    // 막힌 경우 → 세션 종료
+    // 막힌 경우 → CONTINUE 광고 옵션 활성화 (세션당 1회, SDK 있을 때만)
+    _canContinue = SG.CG.isAvailable() && !_continueUsed;
+
+    // 전면 광고 — 게임 종료 직후, 랭킹 결과 표시 전 (논리적 정지 지점)
+    await SG.CG.requestMidgameAd();
+
     showOverlay('gameover', sessionScore);
     // Firebase: 글로벌 통계 + 난이도별 랭킹 제출
     if (SG.FB && SG.FB.isConnected()) {
@@ -1412,6 +1480,123 @@ function toggleMute() {
   btn.classList.toggle('active', !muted);
 }
 
+// ── 점수 카운트업 애니메이션 ─────────────────────────────────────
+function animateScoreCount(fromVal, toVal, el, duration) {
+  if (!el) return;
+  const start = performance.now();
+  (function step(now) {
+    const t      = Math.min((now - start) / duration, 1);
+    const eased  = 1 - Math.pow(1 - t, 3);          // ease-out cubic
+    el.textContent = Math.round(fromVal + (toVal - fromVal) * eased).toLocaleString();
+    if (t < 1) requestAnimationFrame(step);
+  })(performance.now());
+}
+
+// ── 2× 보너스 풀스크린 이펙트 ───────────────────────────────────
+function triggerDoubleScoreEffect(fromScore, toScore) {
+  // 1. 오버레이 텍스트 애니메이션
+  const fx  = document.getElementById('double-bonus-fx');
+  const lbl = document.getElementById('double-bonus-label');
+  if (fx && lbl) {
+    fx.classList.remove('show');
+    // 애니메이션 재시작을 위한 reflow
+    lbl.style.animation = 'none';
+    void fx.offsetWidth;
+    lbl.style.animation = '';
+    fx.classList.add('show');
+    setTimeout(() => fx.classList.remove('show'), 2200);
+  }
+
+  // 2. 오버레이 점수 카운트업
+  animateScoreCount(fromScore, toScore, olScoreVal, 1100);
+
+  // 3. 골드 파티클 버스트 (캔버스 전역)
+  if (renderer) {
+    const gold = { fill: '#ffe020', glow: '#ffb000' };
+    const W = canvas.width, H = canvas.height;
+    for (let i = 0; i < 10; i++) {
+      renderer.particles.emit(
+        W * (.1 + Math.random() * .8),
+        H * (.1 + Math.random() * .8),
+        gold, 22
+      );
+    }
+  }
+
+  // 4. 레벨 플래시 (화면 골드 틴트)
+  levelFlash.style.background = 'rgba(255,220,0,.22)';
+  levelFlash.classList.add('show');
+  setTimeout(() => {
+    levelFlash.classList.remove('show');
+    levelFlash.style.background = '';   // 기본값 복원
+  }, 200);
+}
+
+// ── 리워드 광고: 레벨 점수 2배 ──────────────────────────────────
+async function requestDoubleScore() {
+  console.log('[2×] requestDoubleScore called');
+  console.log('[2×] SG.CG.isAvailable():', SG.CG.isAvailable());
+
+  const btn = document.getElementById('btn-ad-double');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Loading…'; }
+  olActionBtn.disabled = true;
+
+  // 리워드 광고 시작 전 — 배너 숨김 (풀스크린 광고와 overlap 방지)
+  SG.CG.hideBanner();
+  console.log('[2×] calling requestRewardedAd...');
+  const res = await SG.CG.requestRewardedAd('score_double');
+  console.log('[2×] requestRewardedAd result:', res);
+
+  olActionBtn.disabled = false;
+  if (res && res.granted) {
+    const prevScore  = sessionScore;
+    // _lastLevelScore 만큼 세션 누적에 추가 (2배 처리)
+    sessionScore    += _lastLevelScore;
+
+    // 시각 효과: 점수 카운트업 + 파티클 + 플래시
+    triggerDoubleScoreEffect(prevScore, sessionScore);
+
+    // 최고 기록 갱신 체크
+    if (sessionScore > getBest(currentDiff)) {
+      setBest(currentDiff, sessionScore);
+      svBest.textContent      = sessionScore.toLocaleString();
+      olBestNew.style.display = 'block';
+    }
+    if (btn) btn.style.display = 'none';
+
+    // 이펙트 재생 후 다음 레벨 (1.5초 대기, startLevel 내부에서 배너 숨김 유지)
+    setTimeout(() => startLevel(), 1500);
+  } else {
+    // 광고 실패/건너뜀 → 오버레이로 복귀 → 배너 복원
+    SG.CG.showBanner();
+    if (btn) { btn.disabled = false; btn.textContent = '📺 2× SCORE'; }
+  }
+}
+
+// ── 리워드 광고: 게임오버 후 이어하기 ───────────────────────────
+async function requestContinue() {
+  const btn = document.getElementById('btn-ad-continue');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Loading…'; }
+  olActionBtn.disabled = true;
+
+  // 리워드 광고 시작 전 — 배너 숨김
+  SG.CG.hideBanner();
+  const res = await SG.CG.requestRewardedAd('continue_game');
+
+  olActionBtn.disabled = false;
+  if (res && res.granted) {
+    _canContinue    = false;
+    _continueUsed   = true;
+    if (btn) btn.style.display = 'none';
+    // 세션 점수 유지하며 새 레벨 시작 (startLevel 내부에서 배너 숨김 유지)
+    startLevel();
+  } else {
+    // 광고 실패/건너뜀 → 게임오버 오버레이로 복귀 → 배너 복원
+    SG.CG.showBanner();
+    if (btn) { btn.disabled = false; btn.textContent = '📺 CONTINUE'; }
+  }
+}
+
 function showOverlay(type, score) {
   overlayMode = type;
 
@@ -1419,6 +1604,9 @@ function showOverlay(type, score) {
   if (type === 'levelclear' || type === 'gameover') {
     SG.CG.gameplayStop();
   }
+
+  // 유휴 화면 — 배너 광고 표시
+  SG.CG.showBanner();
 
   // 요소 초기 숨김
   olScoreBlock.style.display  = 'none';
@@ -1431,6 +1619,9 @@ function showOverlay(type, score) {
   olLb.style.display = 'none';
   olLbMyrank.style.display = 'none';
   overlay.classList.remove('gameover');
+  // 광고 버튼 기본 숨김 (각 모드에서 필요 시 개별 표시)
+  const _adBtns = ['btn-ad-double', 'btn-ad-continue'];
+  _adBtns.forEach(id => { const b = document.getElementById(id); if (b) b.style.display = 'none'; });
 
   if (type === 'tutorial_intro') {
     olTitle.textContent  = 'GRID PROTOCOL';
@@ -1473,10 +1664,23 @@ function showOverlay(type, score) {
     }
     olActionBtn.textContent = `▶ LEVEL ${level + 1}`;
 
+    // 2× SCORE 리워드 광고 버튼 (SDK 활성 시에만)
+    const _btnDouble = document.getElementById('btn-ad-double');
+    if (_btnDouble) {
+      const _adAvail = SG.CG.isAvailable();
+      _btnDouble.style.display = _adAvail ? 'block' : 'none';
+      _btnDouble.disabled      = false;
+      _btnDouble.textContent   = '📺 2× SCORE';
+    }
+
+    // 광고 버튼 표시 시: 자동 진행 취소 (플레이어가 직접 선택)
+    // 광고 없는 경우: 기존 3초 자동 진행 유지
     clearTimeout(showOverlay._autoNext);
-    showOverlay._autoNext = setTimeout(() => {
-      if (overlayMode === 'levelclear') startLevel();
-    }, 3000);
+    if (!SG.CG.isAvailable()) {
+      showOverlay._autoNext = setTimeout(() => {
+        if (overlayMode === 'levelclear') startLevel();
+      }, 3000);
+    }
 
   } else { // gameover
     olTitle.textContent  = 'GRID LOCKED';
@@ -1493,6 +1697,17 @@ function showOverlay(type, score) {
     }
     olActionBtn.textContent = '↺ PLAY AGAIN';
     overlay.classList.add('gameover');
+
+    // CONTINUE 리워드 광고 버튼 (세션당 1회, SDK 활성 시에만)
+    const _btnContinue = document.getElementById('btn-ad-continue');
+    if (_btnContinue) {
+      _btnContinue.style.display = _canContinue ? 'block' : 'none';
+      _btnContinue.disabled      = false;
+      _btnContinue.textContent   = '📺 CONTINUE';
+    }
+    // 게임오버에서 2× 버튼은 항상 숨김
+    const _btnDoublego = document.getElementById('btn-ad-double');
+    if (_btnDoublego) _btnDoublego.style.display = 'none';
 
     // 글로벌 클리어율 비동기 표시
     const olGlobalRate = document.getElementById('ol-global-rate');
@@ -1536,13 +1751,50 @@ function triggerLevelFlash() {
 
 // ── Boot ─────────────────────────────────────────────────────────
 (async () => {
-  await SG.CG.init();                              // CrazyGames SDK (priority)
-  if (!SG.CG.isAvailable() && window.SG && SG.PG) {
-    await SG.PG.init();                            // Playgama Bridge (fallback)
+  // Playgama Bridge 정적 로드 감지 → CrazyGames SDK 대기 없이 즉시 init
+  // (Playgama QA 검증기가 30초 이내 game_ready 수신 필요)
+  if (window.bridge && typeof window.bridge.initialize === 'function') {
+    await SG.PG.init();                            // Playgama Bridge 우선
+  } else {
+    await SG.CG.init();                            // CrazyGames SDK
+    if (!SG.CG.isAvailable() && SG.PG) {
+      await SG.PG.init();                          // 기타 플랫폼 폴백
+    }
   }
   SG.CG.loadingStart();    // notify asset loading started
   init();                  // sync init (Canvas, overlay, RAF loop)
-  SG.CG.loadingStop();     // notify loading complete / game_ready
+  SG.CG.loadingStop();     // notify loading complete / game_ready (Bridge: sendMessage)
+
+  // Playgama 플랫폼 이벤트 — 오디오 상태 단일 핸들러
+  // 광고(인터스티셜·리워드), 탭 전환, 시스템 pause 모두 커버
+  if (SG.PG) {
+    SG.PG._onAudioStateChanged = (isEnabled) => {
+      sound.setMuted(!isEnabled);
+    };
+  }
+
+  // Playgama Bridge storage: 다른 기기 / 세션에서 저장된 최고 기록 복원
+  // bridge.storage는 플랫폼에 따라 서버측 저장소를 사용하므로
+  // localStorage보다 높은 값이 있으면 덮어씁니다.
+  if (SG.PG && SG.PG.isAvailable()) {
+    SG.PG.storageGet(['samegame_best_easy', 'samegame_best_normal', 'samegame_best_hard'])
+      .then(function (data) {
+        if (!data) return;
+        var updated = false;
+        ['easy', 'normal', 'hard'].forEach(function (d) {
+          var pgBest = parseInt(data['samegame_best_' + d]) || 0;
+          if (pgBest > getBest(d)) {
+            localStorage.setItem('samegame_best_' + d, pgBest);
+            updated = true;
+          }
+        });
+        // 현재 난이도 최고 기록 UI 반영
+        if (updated && svBest) {
+          svBest.textContent = getBest(currentDiff).toLocaleString();
+        }
+      })
+      .catch(function () {});
+  }
 })();
 </script>
 </body>

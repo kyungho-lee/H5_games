@@ -152,16 +152,16 @@ function makeFakeStorage() {
   assert.ok(share.includes('NORMAL'),           'Share: contains difficulty');
   assert.ok(share.includes('12,340'),           'Share: contains formatted score');
   assert.ok(share.includes('🔥'),              'Share: contains streak emoji');
-  assert.ok(share.includes('최대 12개'),        'Share: max group size');
-  assert.ok(share.includes('평균 6.3개/수'),    'Share: average group size');
-  assert.ok(share.includes('✓ 클리어'),         'Share: cleared flag');
+  assert.ok(share.includes('max 12'),           'Share: max group size');
+  assert.ok(share.includes('avg 6.3/move'),    'Share: average group size');
+  assert.ok(share.includes('✓ CLEARED'),        'Share: cleared flag');
   assert.ok(!share.includes('"r"'),            'Share: no raw r/c in output');
   assert.ok(!share.includes('board'),          'Share: no "board" in output');
 
-  // 미클리어 케이스
+  // not-cleared case
   const run2 = { score: 500, moves: 5, cleared: false, trail: [{ r:0,c:0,t:0,n:3 }] };
   const share2 = dm.buildShareString('normal', run2);
-  assert.ok(share2.includes('✗ 미클리어'),     'Share: not-cleared flag');
+  assert.ok(share2.includes('✗ NOT CLEARED'),  'Share: not-cleared flag');
 
   console.log('✓ buildShareString');
 }
@@ -206,6 +206,33 @@ function makeFakeStorage() {
     );
   });
   console.log('✓ makeGame returns clearable boards (easy/normal/hard)');
+}
+
+// ── recordResult: 광고 재도전 최고점 갱신 ────────────────────────
+{
+  const storage = makeFakeStorage();
+  const dm = new DailyManager(new LocalAdapter(storage), storage, () => new Date('2026-06-09T12:00:00Z'));
+
+  // 첫 플레이 → streak 증가
+  dm.recordResult('normal', { score: 1000, moves: 10, cleared: false, trail: [] });
+  assert.strictEqual(dm.getStats('normal').streak, 1, 'Retry: first play → streak 1');
+  assert.strictEqual(dm.getStats('normal').best, 1000, 'Retry: first play best = 1000');
+
+  // 재도전 낮은 점수 → 결과 유지
+  dm.recordResult('normal', { score: 500, moves: 8, cleared: false, trail: [] });
+  assert.strictEqual(dm.getStats('normal').streak, 1, 'Retry: lower score → streak unchanged');
+  assert.strictEqual(dm.getStats('normal').best, 1000, 'Retry: lower score → best unchanged');
+  const todayResult1 = dm.getStats('normal').todayResult;
+  assert.strictEqual(todayResult1.score, 1000, 'Retry: lower score → stored score unchanged');
+
+  // 재도전 높은 점수 → 결과·best 갱신, streak 중복 없음
+  dm.recordResult('normal', { score: 2500, moves: 15, cleared: true, trail: [] });
+  assert.strictEqual(dm.getStats('normal').streak, 1, 'Retry: higher score → streak still 1 (no dup)');
+  assert.strictEqual(dm.getStats('normal').best, 2500, 'Retry: higher score → best updated');
+  const todayResult2 = dm.getStats('normal').todayResult;
+  assert.strictEqual(todayResult2.score, 2500, 'Retry: higher score → stored score updated');
+
+  console.log('✓ recordResult: 광고 재도전 최고점 갱신');
 }
 
 console.log('\nAll tests passed.');

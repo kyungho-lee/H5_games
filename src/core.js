@@ -379,23 +379,39 @@
     }
 
     recordResult(diff, run) {
-      const today = this.todayKey();
-      const seed  = dateSeed(today, diff);
-      const record = { date: today, diff, seed, score: run.score, moves: run.moves, cleared: run.cleared, trail: run.trail || [] };
+      const today      = this.todayKey();
+      const resultKey  = 'sg_daily_result_' + today + '_' + diff;
+      const prevRaw    = this._storage.getItem(resultKey);
 
-      this._storage.setItem(
-        'sg_daily_result_' + today + '_' + diff,
-        JSON.stringify({ score: run.score, moves: run.moves, cleared: run.cleared, ts: new Date().toISOString() })
-      );
-      this._updateStreak(today);
-      this._updateBest(diff, run.score);
+      if (!prevRaw) {
+        // ── 첫 플레이: streak·best·history 모두 갱신 ──────────────
+        const seed   = dateSeed(today, diff);
+        const record = { date: today, diff, seed, score: run.score, moves: run.moves, cleared: run.cleared, trail: run.trail || [] };
 
-      const history = JSON.parse(this._storage.getItem('sg_daily_history') || '[]');
-      history.unshift(record);
-      if (history.length > 30) history.pop();
-      this._storage.setItem('sg_daily_history', JSON.stringify(history));
+        this._storage.setItem(resultKey, JSON.stringify({
+          score: run.score, moves: run.moves, cleared: run.cleared,
+          ts: new Date().toISOString(),
+        }));
+        this._updateStreak(today);
+        this._updateBest(diff, run.score);
 
-      this._adapter.submit(record);
+        const history = JSON.parse(this._storage.getItem('sg_daily_history') || '[]');
+        history.unshift(record);
+        if (history.length > 30) history.pop();
+        this._storage.setItem('sg_daily_history', JSON.stringify(history));
+        this._adapter.submit(record);
+
+      } else {
+        // ── 광고 재도전: 최고점일 때만 결과·best 갱신, streak 유지 ─
+        const prev = JSON.parse(prevRaw);
+        if (run.score > prev.score || (run.score === prev.score && run.cleared && !prev.cleared)) {
+          this._storage.setItem(resultKey, JSON.stringify({
+            score: run.score, moves: run.moves, cleared: run.cleared,
+            ts: new Date().toISOString(),
+          }));
+          this._updateBest(diff, run.score);
+        }
+      }
     }
 
     getStats(diff) {
@@ -413,8 +429,8 @@
       const trail  = run.trail || [];
       const maxN   = trail.length ? trail.reduce((m, t) => Math.max(m, t.n), 0) : 0;
       const avgN   = trail.length ? trail.reduce((s, t) => s + t.n, 0) / trail.length : 0;
-      const result = run.cleared ? '✓ 클리어' : '✗ 미클리어';
-      const stats4 = '최대 ' + maxN + '개  평균 ' + avgN.toFixed(1) + '개/수  ' + result;
+      const result = run.cleared ? '✓ CLEARED' : '✗ NOT CLEARED';
+      const stats4 = 'max ' + maxN + '  avg ' + avgN.toFixed(1) + '/move  ' + result;
       return [
         'SameGame · Grid Protocol',
         'Daily ' + today + ' · ' + diff.toUpperCase(),

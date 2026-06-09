@@ -1,0 +1,15 @@
+# 의존성
+node_modules/
+
+# 빌드 산물
+*.zip
+dist/
+
+# 스크린샷 (개발용 캡처)
+screenshots/
+
+# OS / 에디터
+.DS_Store
+Thumbs.db
+.vscode/
+*.swp

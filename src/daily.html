@@ -163,9 +163,10 @@
 
 <script src="core.js"></script>
 <script src="render.js"></script>
+<script src="sound.js"></script>
 <script>
 'use strict';
-const { DIFFICULTIES, scoreFormula, GameLogic, Renderer, DailyManager, LocalAdapter } = SG;
+const { DIFFICULTIES, scoreFormula, GameLogic, Renderer, DailyManager, LocalAdapter, SoundManager } = SG;
 
 // ── DOM refs ──────────────────────────────────────────────────────
 const canvas        = document.getElementById('gameCanvas');
@@ -190,6 +191,7 @@ const svDate        = document.getElementById('sv-date');
 // ── State ─────────────────────────────────────────────────────────
 let renderer    = null;
 let logic       = null;
+let sound       = null;
 let dailyMgr    = null;
 let currentDiff = localStorage.getItem('sg_daily_lastdiff') || 'easy';
 let isRanked    = false;
@@ -197,11 +199,15 @@ let gameActive  = false;
 let lastTime    = 0;
 let trail       = [];   // [{r, c, t, n}]
 let lastRun     = null;
+let comboCount  = 0;    // 연속 대형 그룹 제거 수 (사운드용)
+
+const COMBO_MIN_SIZE = 5; // 콤보 체인 유지 최소 그룹 크기
 
 // ── Boot ──────────────────────────────────────────────────────────
 function init() {
   dailyMgr = new DailyManager(new LocalAdapter(localStorage), localStorage);
   renderer  = new Renderer(canvas);
+  sound     = new SoundManager();
   resizeCanvas();
   applyDiffUI();
   refreshStats();
@@ -297,7 +303,8 @@ function beginPractice() {
 }
 
 function startBoard() {
-  logic = dailyMgr.makeGame(currentDiff);
+  logic      = dailyMgr.makeGame(currentDiff);
+  comboCount = 0;
   resizeCanvas();
   renderer.hintCells  = [];
   renderer.hoverGroup = [];
@@ -350,16 +357,29 @@ function handleClick(px, py) {
     return;
   }
 
+  const groupSize = result.group.length;
+
   // record trail entry
-  trail.push({ r, c, t: Date.now(), n: result.group.length });
+  trail.push({ r, c, t: Date.now(), n: groupSize });
 
   renderer.spawnRemoveAnim(result.group, colorBeforeRemove);
   renderer.triggerShake();
-  msgBar.textContent = '+' + result.gained + '  (' + result.group.length + ' tiles)';
+  sound.playRemove(groupSize);
+
+  // 콤보 판정 (5개 이상 연속 → 콤보 체인)
+  if (groupSize >= COMBO_MIN_SIZE) {
+    comboCount++;
+  } else {
+    comboCount = 0;
+  }
+  if (comboCount >= 2) sound.playCombo(comboCount);
+
+  msgBar.textContent = '+' + result.gained + '  (' + groupSize + ' tiles)'
+    + (comboCount >= 2 ? '  ×' + comboCount + ' COMBO' : '');
 
   for (const ev of result.events) {
-    if (ev.type === 'BOARD_CLEAR') { endGame(true);  return; }
-    if (ev.type === 'GAME_OVER')   { endGame(false); return; }
+    if (ev.type === 'BOARD_CLEAR') { sound.playClear();    endGame(true);  return; }
+    if (ev.type === 'GAME_OVER')   { sound.playGameOver(); endGame(false); return; }
   }
 }
 

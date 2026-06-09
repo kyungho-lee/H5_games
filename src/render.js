@@ -128,15 +128,15 @@
         const cy = this.offY + r * ts + ts / 2;
         this.particles.emit(cx, cy, COLOR_PALETTE[colorIdx], 14);
       });
-      group.forEach(([r, c]) => {
-        const cx = this.offX + c * ts + ts / 2;
-        const cy = this.offY + r * ts + ts / 2;
-        const ci = group[0]; // center for score popup
-        this.floatTexts.push(new FloatText(cx, cy,
+      if (group.length > 0) {
+        const [fr, fc] = group[0];
+        const fx = this.offX + fc * ts + ts / 2;
+        const fy = this.offY + fr * ts + ts / 2;
+        this.floatTexts.push(new FloatText(fx, fy,
           '+' + scoreFormula(group.length),
           COLOR_PALETTE[colorIdx].glow
         ));
-      });
+      }
     }
 
     flashGroup(group) {

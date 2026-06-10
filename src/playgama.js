@@ -23,8 +23,14 @@
   // 각 IIFE는 격리된 global을 가질 수 있으므로(window 플래그 공유 불가),
   // SG.CG 함수 객체 자체에 patch 마커를 박아 중복 patch를 차단합니다.
   if (SG.CG && SG.CG.requestRewardedAd && SG.CG.requestRewardedAd.__SG_PG_PATCHED__) {
-    console.log('[SG.PG] SG.CG already patched — skipping duplicate IIFE');
-    return;
+    // qa_tool / mock 플랫폼이 이미 patch 되어 있으면 재patch 불필요
+    var _existingPlatform = SG.CG.requestRewardedAd.__SG_PG_PLATFORM__;
+    if (_existingPlatform === 'qa_tool' || _existingPlatform === 'mock') {
+      console.log('[SG.PG] SG.CG already patched by qa_tool/mock — skipping duplicate IIFE');
+      return;
+    }
+    // 이전 patch가 다른 플랫폼(구버전 eval 등)이면 덮어쓰기 허용 (qa_tool이 우선)
+    console.log('[SG.PG] overriding previous patch (platform: ' + _existingPlatform + ')');
   }
 
   // ── 디버그 로그 게이트: ?dev 또는 localStorage('sg_dev') = '1' ────
@@ -114,12 +120,13 @@
 
       await _bridge.initialize();
       _ready = true;
+      var isMockPlatform = _bridge.platform.id === 'mock' || _bridge.platform.id === 'qa_tool';
       console.log('[SG.PG] Bridge initialized · platform:', _bridge.platform.id);
 
       // SDK 내장 인터스티셜 최소 간격 설정
-      // mock(QA): 0초 — 레벨마다 반복 호출 시 SDK가 무음 차단하지 않도록
-      // 실서버:   60초 — 광고 과다 노출 방지
-      var _interDelay = (_bridge.platform.id === 'mock') ? 0 : 60;
+      // mock/qa_tool: 0초 — QA 반복 테스트 시 SDK 무음 차단 방지
+      // 실서버:       60초 — 광고 과다 노출 방지
+      var _interDelay = isMockPlatform ? 0 : 60;
       try { _bridge.advertisement.setMinimumDelayBetweenInterstitial(_interDelay); } catch (e) {}
 
       // ── 플랫폼 이벤트 — 오디오 / 일시정지 상태 ────────────────────
@@ -183,13 +190,16 @@
     // ── 미드게임(인터스티셜) 광고 ───────────────────────────────
     // 레벨 클리어 직후 호출. 광고가 닫힐 때까지 await 로 대기.
     SG.CG.requestMidgameAd = async function () {
-      dlog('[PG.inter] called — ready:', _ready, '| bridge:', !!_bridge,
+      console.log('[PG.inter] called — ready:', _ready, '| bridge:', !!_bridge,
                   '| isInterstitialSupported:', _bridge && _bridge.advertisement.isInterstitialSupported,
                   '| platform:', _bridge && _bridge.platform.id);
-      if (!_ready || !_bridge) return;
+      if (!_ready || !_bridge) {
+        console.warn('[PG.inter] not ready — skipped');
+        return;
+      }
       // isInterstitialSupported: mock 모드에서 false일 수 있으므로 mock은 체크 건너뜀
       // (QA 검증기가 showInterstitial() 호출을 intercept하려면 반드시 호출되어야 함)
-      var isMock = _bridge.platform.id === 'mock';
+      var isMock = _bridge.platform.id === 'mock' || _bridge.platform.id === 'qa_tool';
       if (!isMock && !_bridge.advertisement.isInterstitialSupported) {
         console.warn('[PG.inter] isInterstitialSupported = false → skipped');
         return;
@@ -210,7 +220,7 @@
         // 상태 리스너: closed|failed → Promise resolve
         // 오디오 뮤트/복원은 platform.on('audioStateChanged') 핸들러가 담당
         function onState(state) {
-          dlog('[PG.inter] state:', state);
+          console.log('[PG.inter] state:', state);
           if (state === 'closed') {
             try { _bridge.advertisement.off(evInter, onState); } catch (e) {}
             finish();
@@ -241,9 +251,11 @@
         }, _interTimeout);
 
         // Promise.resolve() 래핑: mock 플랫폼에서 undefined 반환 시에도 안전
+        console.log('[PG.inter] calling showInterstitial — isMock:', isMock);
         Promise.resolve(_bridge.advertisement.showInterstitial('level_complete'))
-          .catch(function () {
-            try { _bridge.advertisement.off(evInter, onState); } catch (e) {}
+          .catch(function (e) {
+            console.warn('[PG.inter] showInterstitial threw:', e);
+            try { _bridge.advertisement.off(evInter, onState); } catch (e2) {}
             finish();
           });
       });
@@ -253,15 +265,18 @@
     // 실패 재도전·보상 버튼에서 호출. { granted: bool } 반환.
     // placementId: 선택 파라미터 (기본값 'retry_reward')
     SG.CG.requestRewardedAd = async function (placementId) {
-      dlog('[PG.rewarded] called — ready:', _ready, '| bridge:', !!_bridge,
+      console.log('[PG.rewarded] called — ready:', _ready, '| bridge:', !!_bridge,
                   '| isRewardedSupported:', _bridge && _bridge.advertisement.isRewardedSupported,
                   '| platform:', _bridge && _bridge.platform.id);
-      if (!_ready || !_bridge) return { granted: false };
+      if (!_ready || !_bridge) {
+        console.warn('[PG.rewarded] not ready — granted:false');
+        return { granted: false };
+      }
       // isRewardedSupported: mock 모드에서 false일 수 있으므로 mock은 체크 건너뜀
       // (QA 검증기가 showRewarded() 호출을 intercept하려면 반드시 호출되어야 함)
-      var isMockR = _bridge.platform.id === 'mock';
+      var isMockR = _bridge.platform.id === 'mock' || _bridge.platform.id === 'qa_tool';
       if (!isMockR && !_bridge.advertisement.isRewardedSupported) {
-        console.debug('[PG.rewarded] isRewardedSupported = false → skipped');
+        console.warn('[PG.rewarded] isRewardedSupported = false → skipped');
         if (SG.Notify) SG.Notify.info('Ad not available right now.');
         return { granted: false };
       }
@@ -292,12 +307,12 @@
         // rewarded 상태에서만 보상 지급 (closed로 건너뛰면 granted = false 유지)
         // 오디오 뮤트/복원은 platform.on('audioStateChanged') 핸들러가 담당
         function onState(state) {
-          dlog('[PG.rewarded] state:', state);
+          console.log('[PG.rewarded] state:', state, '| done:', done);
           if (state === 'rewarded') {
             // docs: rewarded 상태에서 rewardedPlacement 를 읽어 보상 종류 확인
             var placement = '';
             try { placement = _bridge.advertisement.rewardedPlacement || pid; } catch (e) { placement = pid; }
-            dlog('[PG.rewarded] placement:', placement);
+            console.log('[PG.rewarded] placement:', placement);
             granted = true;  // 시청 완료 → 보상 지급
           }
           if (state === 'closed') {
@@ -338,9 +353,11 @@
         }, _rewardTimeout);
 
         // Promise.resolve() 래핑: mock 플랫폼에서 undefined 반환 시에도 안전
+        console.log('[PG.rewarded] calling showRewarded, pid:', pid, '| isMockR:', isMockR);
         Promise.resolve(_bridge.advertisement.showRewarded(pid))
-          .catch(function () {
-            try { _bridge.advertisement.off(evRew, onState); } catch (e) {}
+          .catch(function (e) {
+            console.warn('[PG.rewarded] showRewarded threw:', e);
+            try { _bridge.advertisement.off(evRew, onState); } catch (e2) {}
             finish();
           });
       });
@@ -364,9 +381,12 @@
     // SG.CG.isAvailable()이 true를 반환하도록 교체
     SG.CG.isAvailable = function () { return true; };
 
-    // patch 마커 — 다른 IIFE에서 중복 patch를 감지하기 위함
-    SG.CG.requestRewardedAd.__SG_PG_PATCHED__ = true;
-    SG.CG.requestMidgameAd.__SG_PG_PATCHED__  = true;
+    // patch 마커 — 다른 IIFE에서 중복 patch 및 플랫폼 우선순위 판단에 사용
+    var _pid = _bridge.platform.id;
+    SG.CG.requestRewardedAd.__SG_PG_PATCHED__   = true;
+    SG.CG.requestRewardedAd.__SG_PG_PLATFORM__  = _pid;
+    SG.CG.requestMidgameAd.__SG_PG_PATCHED__    = true;
+    SG.CG.requestMidgameAd.__SG_PG_PLATFORM__   = _pid;
 
     console.log('[SG.PG] SG.CG methods patched to use Playgama Bridge');
   }
@@ -392,6 +412,36 @@
     return (_ready && _bridge) ? (_bridge.platform.language || 'en') : 'en';
   }
 
+  // ── 리더보드 헬퍼 ──────────────────────────────────────────────
+  // Bridge 미초기화 시 silent no-op / safe default 반환
+  var _HOF_LB_ID = 'samegame-grid-protocol_rank';
+
+  function lbGetType() {
+    if (!_ready || !_bridge || !_bridge.leaderboards) return 'not_available';
+    return _bridge.leaderboards.type || 'not_available';
+  }
+
+  function lbSubmit(score) {
+    if (!_ready || !_bridge || !_bridge.leaderboards) return Promise.resolve();
+    if (lbGetType() === 'not_available') return Promise.resolve();
+    return Promise.resolve(
+      _bridge.leaderboards.setScore(_HOF_LB_ID, score)
+    ).catch(function (e) {
+      console.warn('[SG.PG.lb] setScore failed:', e);
+    });
+  }
+
+  function lbGetEntries() {
+    if (!_ready || !_bridge || !_bridge.leaderboards) return Promise.resolve(null);
+    if (lbGetType() !== 'in_game') return Promise.resolve(null);
+    return Promise.resolve(
+      _bridge.leaderboards.getEntries(_HOF_LB_ID)
+    ).catch(function (e) {
+      console.warn('[SG.PG.lb] getEntries failed:', e);
+      return null;
+    });
+  }
+
   // ── SG.PG 즉시 노출 ────────────────────────────────────────────
   // _onAudioStateChanged(isEnabled: bool) :
   //   Bridge가 audioStateChanged 이벤트 발생 시 호출.
@@ -404,6 +454,11 @@
     storageSet,
     platformId,
     platformLanguage,
+    leaderboard: {
+      getType:    lbGetType,    // 'not_available'|'in_game'|'native'|'native_popup'
+      submit:     lbSubmit,     // (score) → Promise
+      getEntries: lbGetEntries, // () → Promise<entries[]|null>
+    },
     _onAudioStateChanged:  null,  // 게임 코드에서 등록: isEnabled=false → 뮤트
     _onPauseStateChanged:  null,  // 게임 코드에서 등록: isPaused=true → 일시정지
   };

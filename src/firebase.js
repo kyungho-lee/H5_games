@@ -71,8 +71,8 @@
   }
 
   // ── 일별 점수 제출 → 리더보드 갱신 ──────────────────────────────
-  async function submitDailyScore({ date, diff, score, moves, cleared }) {
-    if (!db) throw new Error('Firebase not connected');
+  // 내부 1회 시도 — withRetry 가 감쌈
+  async function _submitDailyScoreOnce({ date, diff, score, moves, cleared }) {
     const playerId = getPlayerId();
     const loc      = await fetchLocation();
 
@@ -138,6 +138,31 @@
       playerId,
       flag:         countryFlag(loc.code),
     };
+  }
+
+  // 공개 wrapper — 사전 검증 + 재시도 + Notify dispatch
+  async function submitDailyScore(args) {
+    if (!db) return null;                                   // 미설정 — 정상 분기
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+      SG.Notify.error('NETWORK', { retry: () => submitDailyScore(args) });
+      return null;
+    }
+    try {
+      return await SG.Notify.withRetry(
+        () => _submitDailyScoreOnce(args),
+        {
+          tries:   3,
+          backoff: [500, 1500],
+          retryOn: (err) => err && err.code !== 'permission-denied',
+        }
+      );
+    } catch (e) {
+      SG.Notify.error('FB_SUBMIT', {
+        retry:  () => submitDailyScore(args),
+        detail: e && (e.code || e.message),
+      });
+      return null;
+    }
   }
 
   // ── 리더보드 조회 ─────────────────────────────────────────────────

@@ -15,6 +15,20 @@
 (function (global) {
   'use strict';
 
+  // ── 모듈 중복 로드 가드 ─────────────────────────────────────────
+  // Playgama QA Tool 등은 자체적으로 playgama.js를 동적 평가(VMxxxx)할 수 있고,
+  // 우리 정적 <script>가 또 실행되면 IIFE가 두 번 돌아 _patchCG가 두 번 수행됨.
+  // 두 번째 patch가 다른 Bridge instance(예: mock)를 가리키게 되면 광고 응답이
+  // 첫 번째 instance(qa_tool)로 가서 우리 await가 영원히 멈춤.
+  // → 두 번째 로드는 IIFE 전체를 무시.
+  if (global.__SG_PG_LOADED__) {
+    if (typeof console !== 'undefined' && console.debug) {
+      console.debug('[SG.PG] module already loaded — skipping duplicate IIFE');
+    }
+    return;
+  }
+  global.__SG_PG_LOADED__ = true;
+
   const SG = global.SG = global.SG || {};
 
   // ── 디버그 로그 게이트: ?dev 또는 localStorage('sg_dev') = '1' ────
@@ -46,6 +60,13 @@
 
   // ── 초기화 ─────────────────────────────────────────────────────
   async function init() {
+    // idempotency 가드: 이미 init된 경우 재호출 무시 (광고 listener는
+    // 첫 번째 _bridge 인스턴스에 묶여 있어야 응답을 받을 수 있음)
+    if (_ready) {
+      dlog('[SG.PG] init() already completed — skip');
+      return true;
+    }
+
     var proto = typeof location !== 'undefined' ? location.protocol : '';
     var host  = typeof location !== 'undefined' ? location.hostname  : '';
 

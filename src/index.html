@@ -368,8 +368,9 @@
 <!-- Ad SDK wrappers (domain-checked dynamic load — skipped on file://) -->
 <script src="crazygames.js"></script>   <!-- CrazyGames SDK (priority) -->
 <script src="playgama.js"></script>     <!-- Playgama Bridge wrapper -->
-<!-- Firebase wrapper (SDK dynamically loaded by firebase.js after domain check) -->
-<script src="firebase-config.js"></script>
+<!-- Toast/retry helper (leaf module, no deps — must precede firebase.js) -->
+<script src="notify.js"></script>
+<!-- Firebase: config + SDK는 firebase.js가 동적 로드 (없어도 게임 정상 동작) -->
 <script src="firebase.js"></script>
 <!-- Game engine -->
 <script src="core.js"></script>

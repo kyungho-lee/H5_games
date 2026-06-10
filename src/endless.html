@@ -491,13 +491,12 @@
 
 </div>
 
-<!-- Playgama Bridge — static tag required by Playgama QA validator -->
-<script src="https://bridge.playgama.com/v1/stable/playgama-bridge.js"></script>
 <!-- Ad SDK wrappers (domain-checked dynamic load — skipped on file://) -->
 <script src="crazygames.js"></script>   <!-- CrazyGames SDK (priority) -->
 <script src="playgama.js"></script>     <!-- Playgama Bridge (fallback) -->
-<!-- Firebase SDK v8 compat (ranking stats — ignored if unconfigured) -->
-<script src="firebase-config.js"></script>
+<!-- Toast/retry helper (leaf module, no deps — must precede firebase.js) -->
+<script src="notify.js"></script>
+<!-- Firebase: config + SDK는 firebase.js가 동적 로드 (없어도 게임 정상 동작) -->
 <script src="firebase.js"></script>
 <!-- Game engine -->
 <script src="core.js"></script>
@@ -1567,7 +1566,7 @@ async function requestDoubleScore() {
     // 이펙트 재생 후 다음 레벨 (1.5초 대기, startLevel 내부에서 배너 숨김 유지)
     setTimeout(() => startLevel(), 1500);
   } else {
-    // 광고 실패/건너뜀 → 오버레이로 복귀 → 배너 복원
+    // 광고 실패/건너뜀 → 버튼 복원, 플레이어가 ▶ LEVEL X 버튼으로 직접 진행
     SG.CG.showBanner();
     if (btn) { btn.disabled = false; btn.textContent = '📺 2× SCORE'; }
   }
@@ -1619,9 +1618,12 @@ function showOverlay(type, score) {
   olLb.style.display = 'none';
   olLbMyrank.style.display = 'none';
   overlay.classList.remove('gameover');
-  // 광고 버튼 기본 숨김 (각 모드에서 필요 시 개별 표시)
+  // 광고 버튼 기본 숨김 + 상태 초기화 (각 모드에서 필요 시 개별 표시)
   const _adBtns = ['btn-ad-double', 'btn-ad-continue'];
-  _adBtns.forEach(id => { const b = document.getElementById(id); if (b) b.style.display = 'none'; });
+  _adBtns.forEach(id => {
+    const b = document.getElementById(id);
+    if (b) { b.style.display = 'none'; b.style.opacity = ''; b.disabled = false; }
+  });
 
   if (type === 'tutorial_intro') {
     olTitle.textContent  = 'GRID PROTOCOL';
@@ -1751,14 +1753,24 @@ function triggerLevelFlash() {
 
 // ── Boot ─────────────────────────────────────────────────────────
 (async () => {
-  // Playgama Bridge 정적 로드 감지 → CrazyGames SDK 대기 없이 즉시 init
-  // (Playgama QA 검증기가 30초 이내 game_ready 수신 필요)
+  // CrazyGames SDK가 비-CG 도메인에서 sdkDisabled를 비동기 throw할 수 있음
+  // → console 오류 억제 (게임 동작에는 영향 없음)
+  window.addEventListener('unhandledrejection', function (evt) {
+    var r = evt.reason;
+    if (r && (r.code === 'sdkDisabled' ||
+        (typeof r.message === 'string' && r.message.indexOf('sdkDisabled') !== -1))) {
+      evt.preventDefault();
+    }
+  });
+
+  // Playgama Bridge 또는 CrazyGames SDK 초기화
+  // Bridge가 미리 로드된 경우(QA / 플랫폼 주입) → 즉시 PG 사용
   if (window.bridge && typeof window.bridge.initialize === 'function') {
     await SG.PG.init();                            // Playgama Bridge 우선
   } else {
     await SG.CG.init();                            // CrazyGames SDK
     if (!SG.CG.isAvailable() && SG.PG) {
-      await SG.PG.init();                          // 기타 플랫폼 폴백
+      await SG.PG.init();                          // 기타 플랫폼 폴백 (Bridge 동적 로드)
     }
   }
   SG.CG.loadingStart();    // notify asset loading started
@@ -1795,7 +1807,7 @@ function triggerLevelFlash() {
       })
       .catch(function () {});
   }
-})();
+})().catch(function () {/* boot 에러 무시 */});
 </script>
 </body>
 </html>

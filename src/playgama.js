@@ -15,21 +15,17 @@
 (function (global) {
   'use strict';
 
-  // ── 모듈 중복 로드 가드 ─────────────────────────────────────────
+  const SG = global.SG = global.SG || {};
+
+  // ── 중복 patch 가드 ─────────────────────────────────────────────
   // Playgama QA Tool 등은 자체적으로 playgama.js를 동적 평가(VMxxxx)할 수 있고,
-  // 우리 정적 <script>가 또 실행되면 IIFE가 두 번 돌아 _patchCG가 두 번 수행됨.
-  // 두 번째 patch가 다른 Bridge instance(예: mock)를 가리키게 되면 광고 응답이
-  // 첫 번째 instance(qa_tool)로 가서 우리 await가 영원히 멈춤.
-  // → 두 번째 로드는 IIFE 전체를 무시.
-  if (global.__SG_PG_LOADED__) {
-    if (typeof console !== 'undefined' && console.debug) {
-      console.debug('[SG.PG] module already loaded — skipping duplicate IIFE');
-    }
+  // 우리 정적 <script>가 또 실행되면 IIFE가 여러 번 돌아 _patchCG가 중복 수행됨.
+  // 각 IIFE는 격리된 global을 가질 수 있으므로(window 플래그 공유 불가),
+  // SG.CG 함수 객체 자체에 patch 마커를 박아 중복 patch를 차단합니다.
+  if (SG.CG && SG.CG.requestRewardedAd && SG.CG.requestRewardedAd.__SG_PG_PATCHED__) {
+    console.log('[SG.PG] SG.CG already patched — skipping duplicate IIFE');
     return;
   }
-  global.__SG_PG_LOADED__ = true;
-
-  const SG = global.SG = global.SG || {};
 
   // ── 디버그 로그 게이트: ?dev 또는 localStorage('sg_dev') = '1' ────
   // QA Tool 등 iframe URL을 제어할 수 없는 환경에서는 localStorage 우회 사용:
@@ -60,10 +56,15 @@
 
   // ── 초기화 ─────────────────────────────────────────────────────
   async function init() {
-    // idempotency 가드: 이미 init된 경우 재호출 무시 (광고 listener는
-    // 첫 번째 _bridge 인스턴스에 묶여 있어야 응답을 받을 수 있음)
+    // idempotency 가드 1: 같은 IIFE 내 중복 init 차단
     if (_ready) {
-      dlog('[SG.PG] init() already completed — skip');
+      dlog('[SG.PG] init() already completed in this IIFE — skip');
+      return true;
+    }
+    // idempotency 가드 2: 다른 IIFE가 이미 SG.CG를 patch한 경우 (중복 로드 시)
+    if (SG.CG && SG.CG.requestRewardedAd && SG.CG.requestRewardedAd.__SG_PG_PATCHED__) {
+      console.log('[SG.PG] SG.CG already patched by another instance — skip init');
+      _ready = true;  // 외부 patch 사용
       return true;
     }
 
@@ -362,6 +363,10 @@
     // ── isAvailable override ────────────────────────────────────
     // SG.CG.isAvailable()이 true를 반환하도록 교체
     SG.CG.isAvailable = function () { return true; };
+
+    // patch 마커 — 다른 IIFE에서 중복 patch를 감지하기 위함
+    SG.CG.requestRewardedAd.__SG_PG_PATCHED__ = true;
+    SG.CG.requestMidgameAd.__SG_PG_PATCHED__  = true;
 
     console.log('[SG.PG] SG.CG methods patched to use Playgama Bridge');
   }

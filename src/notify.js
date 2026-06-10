@@ -120,10 +120,11 @@
   function _scheduleDismiss(category, durationMs) {
     var entry = _active.get(category);
     if (!entry) return;
+    clearTimeout(entry.timerId);              // 안전망: 기존 타이머 제거
     entry.dismissAt = Date.now() + durationMs;
     entry.timerId = setTimeout(function () {
       if (entry.hovered) {
-        // 호버 중이면 즉시 닫지 않고 leave 핸들러에서 처리
+        // 호버 중이면 즉시 닫지 않고 leave 핸들러에서 잔여시간 재계산
         return;
       }
       _dismiss(category);
@@ -155,11 +156,16 @@
     };
     _active.set(category, entry);
 
-    // 호버 일시정지 — leave 시 잔여시간 다시 카운트
+    // 호버 일시정지 — leave 시 dismissAt 기준 잔여시간으로 재예약
     built.el.addEventListener('mouseenter', function () { entry.hovered = true; });
     built.el.addEventListener('mouseleave', function () {
       entry.hovered = false;
-      _scheduleDismiss(category, opts.durationMs);
+      var remaining = entry.dismissAt - Date.now();
+      if (remaining > 0) {
+        _scheduleDismiss(category, remaining);
+      } else {
+        _dismiss(category);
+      }
     });
 
     _scheduleDismiss(category, opts.durationMs);

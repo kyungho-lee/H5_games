@@ -1402,14 +1402,9 @@ function _renderEndlessLb(result) {
 }
 
 async function _submitEndlessLb(score, lvl) {
-  try {
-    const result = await SG.FB.submitEndlessScore({ diff: currentDiff, score, level: lvl });
-    _renderEndlessLb(result);
-  } catch (e) {
-    // Firebase 실패 → 더미 데이터로 조용히 폴백 (에러 메시지 미표시)
-    console.warn('[SG] Endless LB submit failed (fallback to demo):', e);
-    _renderEndlessLb(_makeDummyEndless(score, lvl));
-  }
+  // boundary는 throw 하지 않음. null 이면 더미 렌더링.
+  const result = await SG.FB.submitEndlessScore({ diff: currentDiff, score, level: lvl });
+  _renderEndlessLb(result || _makeDummyEndless(score, lvl));
 }
 
 // cleared: 보드를 모두 제거했는지 여부
@@ -1724,7 +1719,7 @@ function showOverlay(type, score) {
             `global ${currentDiff.toUpperCase()} clear rate: ${rate}%`
             + ` (${stats.clearedGames.toLocaleString()}/${stats.totalGames.toLocaleString()} sessions)`;
           olGlobalRate.style.display = 'block';
-        }).catch(function () {});  // Firebase 실패 시 통계 미표시 (silent)
+        });
       }
     }
 
@@ -1753,16 +1748,6 @@ function triggerLevelFlash() {
 
 // ── Boot ─────────────────────────────────────────────────────────
 (async () => {
-  // CrazyGames SDK가 비-CG 도메인에서 sdkDisabled를 비동기 throw할 수 있음
-  // → console 오류 억제 (게임 동작에는 영향 없음)
-  window.addEventListener('unhandledrejection', function (evt) {
-    var r = evt.reason;
-    if (r && (r.code === 'sdkDisabled' ||
-        (typeof r.message === 'string' && r.message.indexOf('sdkDisabled') !== -1))) {
-      evt.preventDefault();
-    }
-  });
-
   // Playgama Bridge 또는 CrazyGames SDK 초기화
   // Bridge가 미리 로드된 경우(QA / 플랫폼 주입) → 즉시 PG 사용
   if (window.bridge && typeof window.bridge.initialize === 'function') {
@@ -1807,7 +1792,7 @@ function triggerLevelFlash() {
       })
       .catch(function () {});
   }
-})().catch(function () {/* boot 에러 무시 */});
+})();
 </script>
 </body>
 </html>

@@ -17,12 +17,10 @@
 
   const SG = global.SG = global.SG || {};
 
-  // ── 디버그 로그 게이트: ?dev 또는 localStorage('sg_dev') 일 때 출력 ──
-  // QA Tool은 iframe URL을 제어할 수 없으므로 localStorage 우회 허용.
-  // (임시 진단용: TEMP_FORCE_DEV=true 면 게이트 무시하고 항상 출력)
-  const TEMP_FORCE_DEV = true;  // ★ 진단 후 false 로 되돌릴 것
-  const _DEV = TEMP_FORCE_DEV
-            || ((typeof location !== 'undefined') &&
+  // ── 디버그 로그 게이트: ?dev 또는 localStorage('sg_dev') = '1' ────
+  // QA Tool 등 iframe URL을 제어할 수 없는 환경에서는 localStorage 우회 사용:
+  //   콘솔에서 localStorage.setItem('sg_dev', '1') 실행 후 리로드.
+  const _DEV = ((typeof location !== 'undefined') &&
                 new URLSearchParams(location.search).has('dev'))
             || ((typeof localStorage !== 'undefined') &&
                 localStorage.getItem('sg_dev') === '1');
@@ -255,7 +253,6 @@
         var timeout    = null;
 
         function finish() {
-          dlog('[PG.DIAG] finish() called — done:', done, '| granted:', granted, '| sawFailed:', sawFailed);
           if (done) return;
           done = true;
           clearTimeout(timeout);
@@ -304,37 +301,20 @@
         // SDK 상수 우선, 없으면 문자열 폴백
         var evRew = (_bridge.EVENT_NAME && _bridge.EVENT_NAME.REWARDED_STATE_CHANGED)
                     || 'rewardedStateChanged';
-        dlog('[PG.DIAG] registering listener — evRew:', evRew, '| isMockR:', isMockR);
         _bridge.advertisement.on(evRew, onState);
-        dlog('[PG.DIAG] listener registered, _bridge keys:', Object.keys(_bridge.advertisement || {}));
 
         // mock 모드: 30초 (QA 검증기 상호작용 대기) / 실서버: 15초
         var _rewardTimeout = isMockR ? 30000 : 15000;
-        dlog('[PG.DIAG] timeout will fire in', _rewardTimeout, 'ms');
         timeout = setTimeout(function () {
-          dlog('[PG.DIAG] setTimeout FIRED at', _rewardTimeout, 'ms');
           sawFailed = true;  // 타임아웃도 실패로 분류
           try { _bridge.advertisement.off(evRew, onState); } catch (e) {}
           finish();
         }, _rewardTimeout);
 
-        // showRewarded 호출 — 진단 로그 + Promise.resolve 래핑 (mock undefined 안전)
-        dlog('[PG.DIAG] calling showRewarded(pid:' + pid + ')');
-        var _srResult;
-        try {
-          _srResult = _bridge.advertisement.showRewarded(pid);
-          dlog('[PG.DIAG] showRewarded returned:', typeof _srResult,
-                       _srResult && _srResult.then ? '(thenable)' : '(immediate)');
-        } catch (e) {
-          dlog('[PG.DIAG] showRewarded threw synchronously:', e && e.message);
-          try { _bridge.advertisement.off(evRew, onState); } catch (e2) {}
-          finish();
-          return;
-        }
-        Promise.resolve(_srResult)
-          .catch(function (e) {
-            dlog('[PG.DIAG] showRewarded promise rejected:', e && e.message);
-            try { _bridge.advertisement.off(evRew, onState); } catch (e2) {}
+        // Promise.resolve() 래핑: mock 플랫폼에서 undefined 반환 시에도 안전
+        Promise.resolve(_bridge.advertisement.showRewarded(pid))
+          .catch(function () {
+            try { _bridge.advertisement.off(evRew, onState); } catch (e) {}
             finish();
           });
       });

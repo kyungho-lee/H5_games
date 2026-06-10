@@ -723,23 +723,19 @@ function makeDummyResult(run) {
 
 // ── Firebase 실제 제출 ────────────────────────────────────────────
 async function submitToFirebase(run) {
-  // 글로벌 통계 갱신 (비필수 — 내부에서 실패 무시)
+  // 글로벌 통계 갱신 (비필수 — silent 정책, boundary가 console.debug만)
   SG.FB.updateGlobalStats(currentDiff, run.cleared);
-  try {
-    const today  = dailyMgr.todayKey();
-    const result = await SG.FB.submitDailyScore({
-      date:    today,
-      diff:    currentDiff,
-      score:   run.score,
-      moves:   run.moves,
-      cleared: run.cleared,
-    });
-    renderLeaderboard(result);
-  } catch (e) {
-    // Firebase 실패 → 더미 데이터로 조용히 폴백
-    console.warn('[SG] Firebase submission failed (fallback to demo):', e);
-    renderLeaderboard(makeDummyResult(run));
-  }
+
+  // boundary는 throw하지 않음. null 이면 더미 렌더링.
+  const today  = dailyMgr.todayKey();
+  const result = await SG.FB.submitDailyScore({
+    date:    today,
+    diff:    currentDiff,
+    score:   run.score,
+    moves:   run.moves,
+    cleared: run.cleared,
+  });
+  renderLeaderboard(result || makeDummyResult(run));
 }
 
 // ── 리더보드 렌더 (실제 + 더미 공통) ────────────────────────────

@@ -17,6 +17,11 @@
 
   const SG = global.SG = global.SG || {};
 
+  // ── 디버그 로그 게이트: ?dev 일 때만 출력 ───────────────────────
+  const _DEV = (typeof location !== 'undefined') &&
+               new URLSearchParams(location.search).has('dev');
+  function dlog() { if (_DEV) console.log.apply(console, arguments); }
+
   let _ready  = false;
   let _bridge = null;
 
@@ -152,7 +157,7 @@
     // ── 미드게임(인터스티셜) 광고 ───────────────────────────────
     // 레벨 클리어 직후 호출. 광고가 닫힐 때까지 await 로 대기.
     SG.CG.requestMidgameAd = async function () {
-      console.log('[PG.inter] called — ready:', _ready, '| bridge:', !!_bridge,
+      dlog('[PG.inter] called — ready:', _ready, '| bridge:', !!_bridge,
                   '| isInterstitialSupported:', _bridge && _bridge.advertisement.isInterstitialSupported,
                   '| platform:', _bridge && _bridge.platform.id);
       if (!_ready || !_bridge) return;
@@ -179,7 +184,7 @@
         // 상태 리스너: closed|failed → Promise resolve
         // 오디오 뮤트/복원은 platform.on('audioStateChanged') 핸들러가 담당
         function onState(state) {
-          console.log('[PG.inter] state:', state);
+          dlog('[PG.inter] state:', state);
           if (state === 'closed') {
             try { _bridge.advertisement.off(evInter, onState); } catch (e) {}
             finish();
@@ -222,7 +227,7 @@
     // 실패 재도전·보상 버튼에서 호출. { granted: bool } 반환.
     // placementId: 선택 파라미터 (기본값 'retry_reward')
     SG.CG.requestRewardedAd = async function (placementId) {
-      console.log('[PG.rewarded] called — ready:', _ready, '| bridge:', !!_bridge,
+      dlog('[PG.rewarded] called — ready:', _ready, '| bridge:', !!_bridge,
                   '| isRewardedSupported:', _bridge && _bridge.advertisement.isRewardedSupported,
                   '| platform:', _bridge && _bridge.platform.id);
       if (!_ready || !_bridge) return { granted: false };
@@ -230,34 +235,43 @@
       // (QA 검증기가 showRewarded() 호출을 intercept하려면 반드시 호출되어야 함)
       var isMockR = _bridge.platform.id === 'mock';
       if (!isMockR && !_bridge.advertisement.isRewardedSupported) {
-        console.warn('[PG.rewarded] isRewardedSupported = false → skipped');
+        console.debug('[PG.rewarded] isRewardedSupported = false → skipped');
+        if (SG.Notify) SG.Notify.info('Ad not available right now.');
         return { granted: false };
       }
 
       var pid = placementId || 'retry_reward';
 
       return new Promise(function (resolve) {
-        var granted = false;
-        var done    = false;
-        var timeout = null;
+        var granted    = false;
+        var done       = false;
+        var sawFailed  = false;   // ★ 실서버 실패 여부 (closed-only = 사용자 스킵)
+        var timeout    = null;
 
         function finish() {
           if (done) return;
           done = true;
           clearTimeout(timeout);
-          // 오디오 복원은 플랫폼 audioStateChanged 이벤트가 자동 처리
+          // 실서버에서 실제 광고 로드 실패(failed) 또는 타임아웃 → 토스트 + 재시도.
+          // 사용자가 광고를 의도적으로 닫은(closed-only) 경우는 silent.
+          // mock 모드는 QA 시나리오이므로 항상 silent.
+          if (!granted && !isMockR && sawFailed && SG.Notify) {
+            SG.Notify.error('AD_REWARDED', {
+              retry: function () { SG.CG.requestRewardedAd(pid); }
+            });
+          }
           resolve({ granted });
         }
 
         // rewarded 상태에서만 보상 지급 (closed로 건너뛰면 granted = false 유지)
         // 오디오 뮤트/복원은 platform.on('audioStateChanged') 핸들러가 담당
         function onState(state) {
-          console.log('[PG.rewarded] state:', state);
+          dlog('[PG.rewarded] state:', state);
           if (state === 'rewarded') {
             // docs: rewarded 상태에서 rewardedPlacement 를 읽어 보상 종류 확인
             var placement = '';
             try { placement = _bridge.advertisement.rewardedPlacement || pid; } catch (e) { placement = pid; }
-            console.log('[PG.rewarded] placement:', placement);
+            dlog('[PG.rewarded] placement:', placement);
             granted = true;  // 시청 완료 → 보상 지급
           }
           if (state === 'closed') {
@@ -268,6 +282,7 @@
           // off→on 으로 재등록해서 QA의 rewarded→closed 주입을 확실히 수신.
           // 실서버: failed 즉시 종료.
           if (state === 'failed') {
+            sawFailed = true;
             if (isMockR) {
               try { _bridge.advertisement.off(evRew, onState); } catch (e) {}
               try { _bridge.advertisement.on(evRew, onState);  } catch (e) {}
@@ -287,6 +302,7 @@
         // mock 모드: 30초 (QA 검증기 상호작용 대기) / 실서버: 15초
         var _rewardTimeout = isMockR ? 30000 : 15000;
         timeout = setTimeout(function () {
+          sawFailed = true;  // 타임아웃도 실패로 분류
           try { _bridge.advertisement.off(evRew, onState); } catch (e) {}
           finish();
         }, _rewardTimeout);

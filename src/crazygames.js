@@ -42,14 +42,16 @@
 
   // ── 초기화 ─────────────────────────────────────────────────────
   async function init() {
-    // ① 로컬 환경 감지 → SDK 완전 생략 (sdkDisabled 에러 원천 차단)
-    var proto   = (typeof location !== 'undefined') ? location.protocol : '';
-    var host    = (typeof location !== 'undefined') ? location.hostname  : '';
-    var isLocal = proto === 'file:' || host === '' ||
-                  host === 'localhost' || host === '127.0.0.1';
+    // ① 비-CrazyGames 호스트면 SDK 로드 자체를 건너뜀.
+    //    (init 후 SDK 내부 background promise 가 sdkDisabled 를 throw 하는 것을
+    //     호출 시점이 아닌 호스트 시점에서 차단)
+    var host = (typeof location !== 'undefined') ? location.hostname : '';
+    var isCG = host === 'crazygames.com'
+            || host.endsWith('.crazygames.com')
+            || host.endsWith('.crazygames.io');
 
-    if (isLocal) {
-      console.log('[SG.CG] 로컬 환경 — CG SDK 로드 생략 (no-op 모드)');
+    if (!isCG) {
+      console.debug('[SG.CG] non-CrazyGames host (' + (host || 'unknown') + ') — SDK init skipped');
       return false;
     }
 

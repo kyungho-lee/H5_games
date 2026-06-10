@@ -166,10 +166,33 @@
   }
 
   // ── 리더보드 조회 ─────────────────────────────────────────────────
-  async function getDailyLeaderboard(date, diff) {
-    if (!db) throw new Error('Firebase not connected');
+  async function _getDailyLeaderboardOnce(date, diff) {
     const snap = await db.collection('sg_daily_lb').doc(date + '_' + diff).get();
     return snap.exists ? snap.data() : { top: [], total: 0, clearedCount: 0 };
+  }
+
+  async function getDailyLeaderboard(date, diff) {
+    if (!db) return null;
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+      SG.Notify.error('NETWORK', { retry: () => getDailyLeaderboard(date, diff) });
+      return null;
+    }
+    try {
+      return await SG.Notify.withRetry(
+        () => _getDailyLeaderboardOnce(date, diff),
+        {
+          tries:   3,
+          backoff: [500, 1500],
+          retryOn: (err) => err && err.code !== 'permission-denied',
+        }
+      );
+    } catch (e) {
+      SG.Notify.error('FB_FETCH', {
+        retry:  () => getDailyLeaderboard(date, diff),
+        detail: e && (e.code || e.message),
+      });
+      return null;
+    }
   }
 
   // ── 글로벌 통계 갱신 (samegame.html 세션 종료 시) ─────────────────
@@ -194,8 +217,7 @@
 
   // ── Endless 세션 점수 제출 → 난이도별 Top-20 갱신 ────────────────
   // sg_endless_lb/{diff} — Top-20 세션 점수 (최고점 유지)
-  async function submitEndlessScore({ diff, score, level }) {
-    if (!db) throw new Error('Firebase not connected');
+  async function _submitEndlessScoreOnce({ diff, score, level }) {
     const playerId = getPlayerId();
     const loc      = await fetchLocation();
     const lbRef    = db.collection('sg_endless_lb').doc(diff);
@@ -233,13 +255,58 @@
     };
   }
 
+  async function submitEndlessScore(args) {
+    if (!db) return null;
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+      SG.Notify.error('NETWORK', { retry: () => submitEndlessScore(args) });
+      return null;
+    }
+    try {
+      return await SG.Notify.withRetry(
+        () => _submitEndlessScoreOnce(args),
+        {
+          tries:   3,
+          backoff: [500, 1500],
+          retryOn: (err) => err && err.code !== 'permission-denied',
+        }
+      );
+    } catch (e) {
+      SG.Notify.error('FB_SUBMIT', {
+        retry:  () => submitEndlessScore(args),
+        detail: e && (e.code || e.message),
+      });
+      return null;
+    }
+  }
+
   // ── Endless 리더보드 조회 ─────────────────────────────────────────
+  async function _getEndlessLeaderboardOnce(diff) {
+    const snap = await db.collection('sg_endless_lb').doc(diff).get();
+    return snap.exists ? snap.data() : { top: [], total: 0 };
+  }
+
   async function getEndlessLeaderboard(diff) {
     if (!db) return null;
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+      SG.Notify.error('NETWORK', { retry: () => getEndlessLeaderboard(diff) });
+      return null;
+    }
     try {
-      const snap = await db.collection('sg_endless_lb').doc(diff).get();
-      return snap.exists ? snap.data() : { top: [], total: 0 };
-    } catch (e) { return null; }
+      return await SG.Notify.withRetry(
+        () => _getEndlessLeaderboardOnce(diff),
+        {
+          tries:   3,
+          backoff: [500, 1500],
+          retryOn: (err) => err && err.code !== 'permission-denied',
+        }
+      );
+    } catch (e) {
+      SG.Notify.error('FB_FETCH', {
+        retry:  () => getEndlessLeaderboard(diff),
+        detail: e && (e.code || e.message),
+      });
+      return null;
+    }
   }
 
   // ── Firebase 초기화 (SDK 로드 후 호출) ────────────────────────────

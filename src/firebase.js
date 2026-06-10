@@ -361,18 +361,28 @@
   // 비로컬 환경: firebase-config.js 동적 로드 → Firebase SDK → 초기화
   // config 파일이 없어도(404) 게임은 정상 동작 (isConnected()=false → 더미 데이터)
   (async function () {
-    // firebase-config.js를 동적으로 로드 (없으면 조용히 건너뜀)
+    // firebase-config.js를 동적으로 로드 (없으면 조용히 건너뜀 — 정상 분기)
     await _loadScript('firebase-config.js');
+    if (!global.SG_FIREBASE_CONFIG) return; // 설정 없으면 Firebase 비활성 (정상)
 
-    if (!global.SG_FIREBASE_CONFIG) return; // 설정 없으면 Firebase 비활성
-
+    // 설정은 있는데 SDK 로드가 실패한 경우 — 사용자에게 안내
     var BASE = 'https://www.gstatic.com/firebasejs/8.10.1/';
     var ok1  = await _loadScript(BASE + 'firebase-app.js');
-    if (!ok1) { console.warn('[SG.FB] firebase-app.js 로드 실패'); return; }
+    if (!ok1) {
+      console.debug('[SG.FB] firebase-app.js 로드 실패');
+      if (SG.Notify) SG.Notify.error('FB_SDK_INIT');
+      return;
+    }
     var ok2  = await _loadScript(BASE + 'firebase-firestore.js');
-    if (!ok2) { console.warn('[SG.FB] firebase-firestore.js 로드 실패'); return; }
+    if (!ok2) {
+      console.debug('[SG.FB] firebase-firestore.js 로드 실패');
+      if (SG.Notify) SG.Notify.error('FB_SDK_INIT');
+      return;
+    }
 
-    init(global.SG_FIREBASE_CONFIG);
+    if (!init(global.SG_FIREBASE_CONFIG)) {
+      if (SG.Notify) SG.Notify.error('FB_SDK_INIT');
+    }
   })();
 
 })(typeof window !== 'undefined' ? window : global);

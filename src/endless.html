@@ -1748,15 +1748,10 @@ function triggerLevelFlash() {
 
 // ── Boot ─────────────────────────────────────────────────────────
 (async () => {
-  // Playgama Bridge 또는 CrazyGames SDK 초기화
-  // Bridge가 미리 로드된 경우(QA / 플랫폼 주입) → 즉시 PG 사용
-  if (window.bridge && typeof window.bridge.initialize === 'function') {
-    await SG.PG.init();                            // Playgama Bridge 우선
-  } else {
-    await SG.CG.init();                            // CrazyGames SDK
-    if (!SG.CG.isAvailable() && SG.PG) {
-      await SG.PG.init();                          // 기타 플랫폼 폴백 (Bridge 동적 로드)
-    }
+  // SDK 초기화 — daily.html과 동일한 단순 패턴
+  await SG.CG.init();                              // CrazyGames SDK (priority)
+  if (!SG.CG.isAvailable() && window.SG && SG.PG) {
+    await SG.PG.init();                            // Playgama Bridge (fallback)
   }
   SG.CG.loadingStart();    // notify asset loading started
   init();                  // sync init (Canvas, overlay, RAF loop)
@@ -1792,7 +1787,13 @@ function triggerLevelFlash() {
       })
       .catch(function () {});
   }
-})();
+})().catch(function (e) {
+  // 부트 실패 — 콘솔에 정확한 에러 보고 + 사용자 토스트로 안내
+  console.error('[boot] endless 초기화 실패:', e);
+  if (window.SG && SG.Notify) {
+    SG.Notify.error('SDK_INIT', { detail: e && (e.message || String(e)) });
+  }
+});
 </script>
 </body>
 </html>

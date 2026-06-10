@@ -304,10 +304,14 @@
         _bridge.advertisement.on(evRew, onState);
 
         // mock 모드: 30초 (QA 검증기 상호작용 대기) / 실서버: 15초
+        // mock에서는 timeout fire 후에도 listener 유지 — QA 검증기가 늦게 응답해도
+        // rewarded→closed 주입을 수신할 수 있어야 검증 패스 가능.
         var _rewardTimeout = isMockR ? 30000 : 15000;
         timeout = setTimeout(function () {
           sawFailed = true;  // 타임아웃도 실패로 분류
-          try { _bridge.advertisement.off(evRew, onState); } catch (e) {}
+          if (!isMockR) {
+            try { _bridge.advertisement.off(evRew, onState); } catch (e) {}
+          }
           finish();
         }, _rewardTimeout);
 

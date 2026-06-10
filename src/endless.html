@@ -1538,7 +1538,9 @@ async function requestDoubleScore() {
   // 리워드 광고 시작 전 — 배너 숨김 (풀스크린 광고와 overlap 방지)
   SG.CG.hideBanner();
   console.log('[2×] calling requestRewardedAd...');
-  const res = await SG.CG.requestRewardedAd('score_double');
+  // placement 미지정 → playgama.js default 'retry_reward' 사용
+  // (Playgama QA Tool이 default placement만 인터셉트하는 것으로 확인 — 차후 placement 분류는 별도 작업)
+  const res = await SG.CG.requestRewardedAd();
   console.log('[2×] requestRewardedAd result:', res);
 
   olActionBtn.disabled = false;
@@ -1575,7 +1577,8 @@ async function requestContinue() {
 
   // 리워드 광고 시작 전 — 배너 숨김
   SG.CG.hideBanner();
-  const res = await SG.CG.requestRewardedAd('continue_game');
+  // placement 미지정 → playgama.js default 'retry_reward' 사용 (Playgama QA Tool 인터셉트 호환)
+  const res = await SG.CG.requestRewardedAd();
 
   olActionBtn.disabled = false;
   if (res && res.granted) {

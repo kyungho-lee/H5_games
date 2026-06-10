@@ -85,19 +85,31 @@
       _ready = true;
       console.log('[SG.PG] Bridge initialized · platform:', _bridge.platform.id);
 
-      // SDK 내장 인터스티셜 최소 간격 설정 (기본값 60초)
-      // 게임 코드의 수동 타이머 대신 SDK가 쿨다운을 추적합니다.
-      try { _bridge.advertisement.setMinimumDelayBetweenInterstitial(60); } catch (e) {}
+      // SDK 내장 인터스티셜 최소 간격 설정
+      // mock(QA): 0초 — 레벨마다 반복 호출 시 SDK가 무음 차단하지 않도록
+      // 실서버:   60초 — 광고 과다 노출 방지
+      var _interDelay = (_bridge.platform.id === 'mock') ? 0 : 60;
+      try { _bridge.advertisement.setMinimumDelayBetweenInterstitial(_interDelay); } catch (e) {}
 
-      // ── 플랫폼 이벤트 — 오디오 상태 ─────────────────────────────
+      // ── 플랫폼 이벤트 — 오디오 / 일시정지 상태 ────────────────────
       // 인터스티셜·리워드 광고, 브라우저 탭 전환, 시스템 일시정지 등
-      // 모든 케이스를 단일 핸들러로 처리합니다.
+      // 모든 케이스를 단일 핸들러로 처리합니다. (docs 권장 방식)
       // 게임 코드(index.html, endless.html)가 _onAudioStateChanged 를 등록하면
       // Bridge가 isEnabled 값을 전달합니다: true = 소리 ON / false = 뮤트.
       try {
         _bridge.platform.on('audioStateChanged', function (isEnabled) {
           if (typeof SG.PG._onAudioStateChanged === 'function') {
             SG.PG._onAudioStateChanged(isEnabled);
+          }
+        });
+      } catch (e) {}
+
+      // pauseStateChanged: 광고·탭전환·시스템 일시정지 시 게임 pause/resume
+      // isEnabled=false → pause / isEnabled=true → resume
+      try {
+        _bridge.platform.on('pauseStateChanged', function (isPaused) {
+          if (typeof SG.PG._onPauseStateChanged === 'function') {
+            SG.PG._onPauseStateChanged(isPaused);
           }
         });
       } catch (e) {}
@@ -140,12 +152,17 @@
     // ── 미드게임(인터스티셜) 광고 ───────────────────────────────
     // 레벨 클리어 직후 호출. 광고가 닫힐 때까지 await 로 대기.
     SG.CG.requestMidgameAd = async function () {
+      console.log('[PG.inter] called — ready:', _ready, '| bridge:', !!_bridge,
+                  '| isInterstitialSupported:', _bridge && _bridge.advertisement.isInterstitialSupported,
+                  '| platform:', _bridge && _bridge.platform.id);
       if (!_ready || !_bridge) return;
-      // 플랫폼이 인터스티셜을 지원하지 않으면 즉시 반환
-      if (!_bridge.advertisement.isInterstitialSupported) return;
-      // ※ mock 플랫폼 skip 제거: Playgama QA 검증기가 mock 모드로 실행되며
-      //   showInterstitial() 호출을 가로채(intercept) 테스트합니다.
-      //   15초 안전 타임아웃이 무한 대기를 방지합니다.
+      // isInterstitialSupported: mock 모드에서 false일 수 있으므로 mock은 체크 건너뜀
+      // (QA 검증기가 showInterstitial() 호출을 intercept하려면 반드시 호출되어야 함)
+      var isMock = _bridge.platform.id === 'mock';
+      if (!isMock && !_bridge.advertisement.isInterstitialSupported) {
+        console.warn('[PG.inter] isInterstitialSupported = false → skipped');
+        return;
+      }
 
       return new Promise(function (resolve) {
         var done = false;
@@ -162,24 +179,40 @@
         // 상태 리스너: closed|failed → Promise resolve
         // 오디오 뮤트/복원은 platform.on('audioStateChanged') 핸들러가 담당
         function onState(state) {
-          if (state === 'closed' || state === 'failed') {
-            try { _bridge.advertisement.off('interstitialStateChanged', onState); } catch (e) {}
+          console.log('[PG.inter] state:', state);
+          if (state === 'closed') {
+            try { _bridge.advertisement.off(evInter, onState); } catch (e) {}
             finish();
+          }
+          // mock 모드: failed 후 리스너 재등록 — QA의 closed 주입 확실히 수신
+          // 실서버: failed 즉시 종료
+          if (state === 'failed') {
+            if (isMock) {
+              try { _bridge.advertisement.off(evInter, onState); } catch (e) {}
+              try { _bridge.advertisement.on(evInter, onState);  } catch (e) {}
+            } else {
+              try { _bridge.advertisement.off(evInter, onState); } catch (e) {}
+              finish();
+            }
           }
         }
 
-        _bridge.advertisement.on('interstitialStateChanged', onState);
+        // SDK 상수 우선, 없으면 문자열 폴백
+        var evInter = (_bridge.EVENT_NAME && _bridge.EVENT_NAME.INTERSTITIAL_STATE_CHANGED)
+                      || 'interstitialStateChanged';
+        _bridge.advertisement.on(evInter, onState);
 
-        // 15초 안전 타임아웃 (네트워크 문제 등)
+        // mock 모드: 3초 (인터스티셜은 빠르게 통과, QA 타이밍 블록 방지) / 실서버: 15초
+        var _interTimeout = isMock ? 3000 : 15000;
         timeout = setTimeout(function () {
-          try { _bridge.advertisement.off('interstitialStateChanged', onState); } catch (e) {}
+          try { _bridge.advertisement.off(evInter, onState); } catch (e) {}
           finish();
-        }, 15000);
+        }, _interTimeout);
 
         // Promise.resolve() 래핑: mock 플랫폼에서 undefined 반환 시에도 안전
         Promise.resolve(_bridge.advertisement.showInterstitial('level_complete'))
           .catch(function () {
-            try { _bridge.advertisement.off('interstitialStateChanged', onState); } catch (e) {}
+            try { _bridge.advertisement.off(evInter, onState); } catch (e) {}
             finish();
           });
       });
@@ -193,14 +226,13 @@
                   '| isRewardedSupported:', _bridge && _bridge.advertisement.isRewardedSupported,
                   '| platform:', _bridge && _bridge.platform.id);
       if (!_ready || !_bridge) return { granted: false };
-      // 플랫폼이 리워드 광고를 지원하지 않으면 즉시 반환
-      if (!_bridge.advertisement.isRewardedSupported) {
+      // isRewardedSupported: mock 모드에서 false일 수 있으므로 mock은 체크 건너뜀
+      // (QA 검증기가 showRewarded() 호출을 intercept하려면 반드시 호출되어야 함)
+      var isMockR = _bridge.platform.id === 'mock';
+      if (!isMockR && !_bridge.advertisement.isRewardedSupported) {
         console.warn('[PG.rewarded] isRewardedSupported = false → skipped');
         return { granted: false };
       }
-      // ※ mock 플랫폼 skip 제거: Playgama QA 검증기가 mock 모드로 실행되며
-      //   showRewarded() 호출을 가로채(intercept) 테스트합니다.
-      //   30초 안전 타임아웃이 무한 대기를 방지합니다.
 
       var pid = placementId || 'retry_reward';
 
@@ -220,26 +252,49 @@
         // rewarded 상태에서만 보상 지급 (closed로 건너뛰면 granted = false 유지)
         // 오디오 뮤트/복원은 platform.on('audioStateChanged') 핸들러가 담당
         function onState(state) {
+          console.log('[PG.rewarded] state:', state);
           if (state === 'rewarded') {
+            // docs: rewarded 상태에서 rewardedPlacement 를 읽어 보상 종류 확인
+            var placement = '';
+            try { placement = _bridge.advertisement.rewardedPlacement || pid; } catch (e) { placement = pid; }
+            console.log('[PG.rewarded] placement:', placement);
             granted = true;  // 시청 완료 → 보상 지급
           }
-          if (state === 'closed' || state === 'failed') {
-            try { _bridge.advertisement.off('rewardedStateChanged', onState); } catch (e) {}
+          if (state === 'closed') {
+            try { _bridge.advertisement.off(evRew, onState); } catch (e) {}
             finish();
+          }
+          // mock 모드: Bridge가 failed 후 리스너를 내부 제거할 수 있음.
+          // off→on 으로 재등록해서 QA의 rewarded→closed 주입을 확실히 수신.
+          // 실서버: failed 즉시 종료.
+          if (state === 'failed') {
+            if (isMockR) {
+              try { _bridge.advertisement.off(evRew, onState); } catch (e) {}
+              try { _bridge.advertisement.on(evRew, onState);  } catch (e) {}
+              // finish() 호출 안 함 — 30s 타임아웃 또는 QA 주입 대기
+            } else {
+              try { _bridge.advertisement.off(evRew, onState); } catch (e) {}
+              finish();
+            }
           }
         }
 
-        _bridge.advertisement.on('rewardedStateChanged', onState);
+        // SDK 상수 우선, 없으면 문자열 폴백
+        var evRew = (_bridge.EVENT_NAME && _bridge.EVENT_NAME.REWARDED_STATE_CHANGED)
+                    || 'rewardedStateChanged';
+        _bridge.advertisement.on(evRew, onState);
 
+        // mock 모드: 30초 (QA 검증기 상호작용 대기) / 실서버: 15초
+        var _rewardTimeout = isMockR ? 30000 : 15000;
         timeout = setTimeout(function () {
-          try { _bridge.advertisement.off('rewardedStateChanged', onState); } catch (e) {}
+          try { _bridge.advertisement.off(evRew, onState); } catch (e) {}
           finish();
-        }, 30000);
+        }, _rewardTimeout);
 
         // Promise.resolve() 래핑: mock 플랫폼에서 undefined 반환 시에도 안전
         Promise.resolve(_bridge.advertisement.showRewarded(pid))
           .catch(function () {
-            try { _bridge.advertisement.off('rewardedStateChanged', onState); } catch (e) {}
+            try { _bridge.advertisement.off(evRew, onState); } catch (e) {}
             finish();
           });
       });
@@ -263,70 +318,7 @@
     // SG.CG.isAvailable()이 true를 반환하도록 교체
     SG.CG.isAvailable = function () { return true; };
 
-    // ── QA 테스트 패널 (mock 플랫폼 전용) ───────────────────────
-    // Playgama QA 검증기는 mock 모드로 실행됩니다.
-    // 이 패널은 QA 검증기가 광고 버튼에 쉽게 접근할 수 있도록
-    // 모든 화면 위에 플로팅 버튼을 표시합니다.
-    if (_bridge.platform.id === 'mock') {
-      _showQaTestPanel();
-    }
-
     console.log('[SG.PG] SG.CG methods patched to use Playgama Bridge');
-  }
-
-  // ── QA 테스트 패널 (mock 모드 전용, 내부 헬퍼) ──────────────────
-  function _showQaTestPanel() {
-    // 이미 패널이 있으면 중복 생성 방지
-    if (document.getElementById('pg-qa-panel')) return;
-
-    var panel = document.createElement('div');
-    panel.id = 'pg-qa-panel';
-    panel.style.cssText = [
-      'position:fixed',
-      'top:8px',
-      'left:8px',
-      'z-index:2147483647',
-      'background:rgba(0,0,0,.88)',
-      'color:#fff',
-      'padding:10px 12px',
-      'border-radius:8px',
-      'font-size:12px',
-      'font-family:monospace',
-      'border:1px solid #ffe020',
-      'pointer-events:auto',
-    ].join(';');
-
-    panel.innerHTML =
-      '<div style="color:#ffe020;font-weight:bold;margin-bottom:8px">⚙ PLAYGAMA QA</div>'
-      + '<button id="pg-qa-inter" style="display:block;width:100%;margin-bottom:5px;'
-      +   'padding:5px 10px;background:#222;color:#fff;border:1px solid #555;'
-      +   'border-radius:4px;cursor:pointer;font-size:12px">'
-      +   '🎬 Test Interstitial</button>'
-      + '<button id="pg-qa-reward" style="display:block;width:100%;'
-      +   'padding:5px 10px;background:#222;color:#ffe020;border:1px solid #ffe020;'
-      +   'border-radius:4px;cursor:pointer;font-size:12px">'
-      +   '📺 Test Rewarded</button>';
-
-    // DOM이 아직 없을 경우 DOMContentLoaded 이후 삽입
-    function _attach() {
-      if (document.body) {
-        document.body.appendChild(panel);
-        document.getElementById('pg-qa-inter').addEventListener('click', function () {
-          console.log('[PG QA] Interstitial test triggered');
-          SG.CG.requestMidgameAd();
-        });
-        document.getElementById('pg-qa-reward').addEventListener('click', function () {
-          console.log('[PG QA] Rewarded test triggered');
-          SG.CG.requestRewardedAd('score_double').then(function (r) {
-            console.log('[PG QA] Rewarded result:', r);
-          });
-        });
-      } else {
-        document.addEventListener('DOMContentLoaded', _attach);
-      }
-    }
-    _attach();
-    console.log('[SG.PG] QA test panel attached (mock mode)');
   }
 
   // ── Bridge Storage 헬퍼 (선택 사용) ───────────────────────────
@@ -362,7 +354,8 @@
     storageSet,
     platformId,
     platformLanguage,
-    _onAudioStateChanged: null,
+    _onAudioStateChanged:  null,  // 게임 코드에서 등록: isEnabled=false → 뮤트
+    _onPauseStateChanged:  null,  // 게임 코드에서 등록: isPaused=true → 일시정지
   };
 
 })(typeof window !== 'undefined' ? window : global);

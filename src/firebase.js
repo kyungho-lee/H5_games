@@ -266,17 +266,21 @@
     return; // IIFE 조기 종료 — SG.FB는 노출되나 isConnected()=false
   }
 
-  // 비로컬 환경: Firebase SDK v8 compat 동적 로드 → 초기화
+  // 비로컬 환경: firebase-config.js 동적 로드 → Firebase SDK → 초기화
+  // config 파일이 없어도(404) 게임은 정상 동작 (isConnected()=false → 더미 데이터)
   (async function () {
+    // firebase-config.js를 동적으로 로드 (없으면 조용히 건너뜀)
+    await _loadScript('firebase-config.js');
+
+    if (!global.SG_FIREBASE_CONFIG) return; // 설정 없으면 Firebase 비활성
+
     var BASE = 'https://www.gstatic.com/firebasejs/8.10.1/';
     var ok1  = await _loadScript(BASE + 'firebase-app.js');
     if (!ok1) { console.warn('[SG.FB] firebase-app.js 로드 실패'); return; }
     var ok2  = await _loadScript(BASE + 'firebase-firestore.js');
     if (!ok2) { console.warn('[SG.FB] firebase-firestore.js 로드 실패'); return; }
 
-    if (global.SG_FIREBASE_CONFIG) {
-      init(global.SG_FIREBASE_CONFIG);
-    }
+    init(global.SG_FIREBASE_CONFIG);
   })();
 
 })(typeof window !== 'undefined' ? window : global);

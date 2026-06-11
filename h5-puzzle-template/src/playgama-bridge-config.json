@@ -1,0 +1,34 @@
+{
+  "platforms": {
+    "game_distribution": { "gameId": "" },
+    "msn":               { "gameId": "" },
+    "y8":                {},
+    "lagged":            {}
+  },
+  "advertisement": {
+    "interstitial": {
+      "preloadOnStart": true,
+      "placements": [
+        { "id": "level_complete" }
+      ]
+    },
+    "rewarded": {
+      "preloadOnStart": true,
+      "placements": [
+        { "id": "retry_reward" }
+      ]
+    },
+    "banner": {
+      "placements": [
+        { "id": "idle_banner" }
+      ]
+    }
+  },
+  "payments": [],
+  "leaderboards": [
+    {
+      "id": "YOUR_GAME_ID_rank",
+      "isMain": true
+    }
+  ]
+}

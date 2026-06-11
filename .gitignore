@@ -1,0 +1,7 @@
+# Local Claude Code config
+.claude/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+*.log

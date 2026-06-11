@@ -1,0 +1,460 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <!-- TODO: 게임 제목으로 변경 -->
+  <title>Puzzle Game</title>
+
+  <!-- Google Fonts: 톤앤매너 유지 (SameGame과 동일) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+
+  <!-- Playgama Bridge SDK: 정적 태그 필수 (QA Tool 인식 요건) -->
+  <script src="https://bridge.playgama.com/v1/stable/playgama-bridge.js"></script>
+
+  <style>
+    /* ── 디자인 토큰 (SameGame 톤앤매너 공유) ──────────────────────── */
+    :root {
+      --bg:      #060810;
+      --panel:   #0d0f18;
+      --border:  #1e2235;
+      --accent:  #00f5c8;
+      --warn:    #ff4060;
+      --dim:     #3a3f5c;
+      --text:    #e8eaf6;
+      --textdim: #6b7299;
+
+      /* TODO: 게임 타일 색상 (필요한 수만큼 추가/제거) */
+      --c0: #ff4060;
+      --c1: #00c8ff;
+      --c2: #39d353;
+      --c3: #ffaa00;
+      --c4: #b06aff;
+      --c5: #ffee44;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body {
+      width: 100%; height: 100%;
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Share Tech Mono', monospace;
+      overflow: hidden;
+      touch-action: none;
+    }
+
+    /* ── 배경 격자 패턴 ──────────────────────────────────────────── */
+    body::before {
+      content: '';
+      position: fixed; inset: 0; z-index: 0;
+      background-image:
+        linear-gradient(rgba(0,245,200,.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(0,245,200,.03) 1px, transparent 1px);
+      background-size: 40px 40px;
+      pointer-events: none;
+    }
+
+    /* ── 코너 그라디언트 글로우 ──────────────────────────────────── */
+    body::after {
+      content: '';
+      position: fixed; inset: 0; z-index: 0;
+      background:
+        radial-gradient(ellipse 50% 40% at 0% 0%,   rgba(0,245,200,.08) 0%, transparent 70%),
+        radial-gradient(ellipse 50% 40% at 100% 100%, rgba(180,100,255,.08) 0%, transparent 70%);
+      pointer-events: none;
+    }
+
+    /* ── 메인 레이아웃 ──────────────────────────────────────────── */
+    #app {
+      position: relative; z-index: 1;
+      display: flex; flex-direction: column; align-items: center;
+      width: 100%; height: 100%;
+    }
+
+    /* ── 헤더 ───────────────────────────────────────────────────── */
+    #header {
+      width: 100%; max-width: 520px;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 10px 16px;
+      border-bottom: 1px solid var(--border);
+    }
+    #game-title {
+      font-family: 'Rajdhani', sans-serif;
+      font-size: 1.3rem; font-weight: 700;
+      color: var(--accent);
+      letter-spacing: 2px;
+      text-transform: uppercase;
+    }
+    /* TODO: 점수/스탯 표시 영역 추가 */
+    #stats {
+      display: flex; gap: 16px;
+      font-size: 0.75rem; color: var(--textdim);
+    }
+    .stat-item { display: flex; flex-direction: column; align-items: flex-end; }
+    .stat-label { font-size: 0.6rem; color: var(--dim); letter-spacing: 1px; }
+    .stat-value { font-family: 'Rajdhani', sans-serif; font-size: 1rem; color: var(--text); }
+
+    /* ── 캔버스 영역 ────────────────────────────────────────────── */
+    #canvas-wrap {
+      flex: 1;
+      display: flex; align-items: center; justify-content: center;
+      width: 100%; max-width: 520px;
+      padding: 8px;
+    }
+    #gameCanvas {
+      display: block;
+      cursor: pointer;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      image-rendering: pixelated;
+    }
+
+    /* ── 오버레이 공통 ──────────────────────────────────────────── */
+    .overlay {
+      position: fixed; inset: 0; z-index: 10;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      background: rgba(6,8,16,.88);
+      backdrop-filter: blur(4px);
+    }
+    .overlay.hidden { display: none; }
+
+    .ol-panel {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 32px 28px;
+      min-width: 280px; max-width: 360px;
+      text-align: center;
+    }
+    .ol-title {
+      font-family: 'Rajdhani', sans-serif;
+      font-size: 1.8rem; font-weight: 700;
+      color: var(--accent);
+      letter-spacing: 3px;
+      text-transform: uppercase;
+      margin-bottom: 16px;
+    }
+    .ol-score {
+      font-family: 'Rajdhani', sans-serif;
+      font-size: 3rem; font-weight: 700;
+      color: var(--text);
+      line-height: 1;
+      margin-bottom: 4px;
+    }
+    .ol-label {
+      font-size: 0.7rem; color: var(--textdim);
+      letter-spacing: 2px; text-transform: uppercase;
+      margin-bottom: 24px;
+    }
+
+    /* ── 버튼 ───────────────────────────────────────────────────── */
+    .btn-primary {
+      display: block; width: 100%;
+      padding: 12px;
+      background: var(--accent); color: #060810;
+      border: none; border-radius: 4px;
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 0.9rem; font-weight: 700;
+      letter-spacing: 2px; text-transform: uppercase;
+      cursor: pointer;
+      margin-bottom: 10px;
+      transition: opacity .15s;
+    }
+    .btn-primary:hover  { opacity: .85; }
+    .btn-primary:active { opacity: .7;  }
+    .btn-secondary {
+      display: block; width: 100%;
+      padding: 10px;
+      background: transparent; color: var(--textdim);
+      border: 1px solid var(--border); border-radius: 4px;
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 0.8rem;
+      letter-spacing: 1px; text-transform: uppercase;
+      cursor: pointer;
+      margin-bottom: 8px;
+      transition: border-color .15s, color .15s;
+    }
+    .btn-secondary:hover { border-color: var(--dim); color: var(--text); }
+
+    /* ── DEV BAR (?dev 파라미터) ────────────────────────────────── */
+    #dev-bar {
+      position: fixed; bottom: 0; left: 0; right: 0; z-index: 9000;
+      background: rgba(13,15,24,.95);
+      border-top: 1px solid #ff4060;
+      padding: 6px 12px;
+      display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+      font-size: 0.65rem; color: var(--textdim);
+    }
+    #dev-bar button {
+      padding: 3px 8px;
+      background: #1e2235; color: var(--text);
+      border: 1px solid var(--border); border-radius: 3px;
+      font-family: inherit; font-size: inherit;
+      cursor: pointer;
+    }
+    #dev-bar button:hover { border-color: var(--accent); color: var(--accent); }
+  </style>
+</head>
+<body>
+
+<!-- ── DEV BAR (?dev 파라미터 시 표시) ──────────────────────────── -->
+<div id="dev-bar" style="display:none">
+  <span style="color:#ff4060;font-weight:bold">DEV</span>
+  <button onclick="devResetAll()">데이터 초기화</button>
+  <!-- TODO: 필요한 개발용 버튼 추가 -->
+</div>
+
+<!-- ── 앱 루트 ──────────────────────────────────────────────────── -->
+<div id="app">
+
+  <!-- 헤더 -->
+  <div id="header">
+    <!-- TODO: 게임 제목 변경 -->
+    <div id="game-title">Puzzle</div>
+    <div id="stats">
+      <div class="stat-item">
+        <span class="stat-label">SCORE</span>
+        <span class="stat-value" id="stat-score">0</span>
+      </div>
+      <div class="stat-item">
+        <span class="stat-label">BEST</span>
+        <span class="stat-value" id="stat-best">0</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- 캔버스 -->
+  <div id="canvas-wrap">
+    <canvas id="gameCanvas"></canvas>
+  </div>
+
+</div>
+
+<!-- ── START 오버레이 ─────────────────────────────────────────────── -->
+<div id="ol-start" class="overlay">
+  <div class="ol-panel">
+    <!-- TODO: 게임 제목/설명 변경 -->
+    <div class="ol-title">Puzzle Game</div>
+    <p style="color:var(--textdim);font-size:.8rem;margin-bottom:24px;line-height:1.6">
+      TODO: 게임 설명을 여기에
+    </p>
+    <button class="btn-primary" onclick="startGame()">START</button>
+  </div>
+</div>
+
+<!-- ── GAME OVER 오버레이 ─────────────────────────────────────────── -->
+<div id="ol-gameover" class="overlay hidden">
+  <div class="ol-panel">
+    <div class="ol-title">Game Over</div>
+    <div class="ol-score" id="go-score">0</div>
+    <div class="ol-label">SCORE</div>
+    <!-- TODO: 베스트 점수, 리더보드 등 추가 -->
+    <button class="btn-primary" onclick="restartGame()">PLAY AGAIN</button>
+    <button class="btn-secondary" onclick="goToStart()">MENU</button>
+  </div>
+</div>
+
+<!-- ── 플랫폼 SDK ─────────────────────────────────────────────────── -->
+<script src="firebase-config.js"></script>
+<script src="notify.js"></script>
+<script src="crazygames.js"></script>
+<script src="playgama.js"></script>
+<script src="firebase.js"></script>
+
+<!-- ── 게임 메인 스크립트 ──────────────────────────────────────────
+     TODO: 이 부분을 게임에 맞게 작성하세요.
+     아래는 최소한의 구조 예시입니다.
+──────────────────────────────────────────────────────────────────── -->
+<script>
+// ── 상수 ──────────────────────────────────────────────────────────
+// TODO: 게임에 맞게 수정
+const STORAGE_KEY_BEST  = 'puzzle_best';
+const STORAGE_KEY_PLAYER = 'puzzle_player_id';
+
+// ── 상태 ──────────────────────────────────────────────────────────
+let score    = 0;
+let bestScore = parseInt(localStorage.getItem(STORAGE_KEY_BEST) || '0');
+let gameRunning = false;
+
+// ── 캔버스 설정 ───────────────────────────────────────────────────
+const canvas = document.getElementById('gameCanvas');
+const ctx    = canvas.getContext('2d');
+
+function resizeCanvas() {
+  const wrap = document.getElementById('canvas-wrap');
+  // TODO: 게임에 맞는 종횡비로 조정
+  const size = Math.min(wrap.clientWidth - 16, wrap.clientHeight - 16, 480);
+  canvas.width  = size;
+  canvas.height = size;
+  render();
+}
+
+// ── 렌더링 ────────────────────────────────────────────────────────
+function render() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = '#0d0f18';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  // TODO: 게임 렌더링 코드 작성
+  if (!gameRunning) {
+    ctx.fillStyle = '#1e2235';
+    ctx.fillText('Canvas ready', 20, 40);
+  }
+}
+
+// ── 게임 루프 ─────────────────────────────────────────────────────
+let _rafId = null;
+function loop() {
+  render();
+  // TODO: 게임 업데이트 로직 추가
+  _rafId = requestAnimationFrame(loop);
+}
+
+// ── 게임 시작 / 재시작 ────────────────────────────────────────────
+async function startGame() {
+  document.getElementById('ol-start').classList.add('hidden');
+  score = 0;
+  updateStats();
+  gameRunning = true;
+  SG.CG.gameplayStart();
+  if (_rafId) cancelAnimationFrame(_rafId);
+  loop();
+
+  // TODO: 게임 초기화 로직 작성
+}
+
+async function restartGame() {
+  document.getElementById('ol-gameover').classList.add('hidden');
+  // 레벨 간 인터스티셜 광고
+  await SG.CG.requestMidgameAd();
+  await startGame();
+}
+
+function goToStart() {
+  document.getElementById('ol-gameover').classList.add('hidden');
+  document.getElementById('ol-start').classList.remove('hidden');
+}
+
+// ── 게임 종료 ─────────────────────────────────────────────────────
+async function endGame() {
+  gameRunning = false;
+  SG.CG.gameplayStop();
+
+  // 최고점 저장
+  if (score > bestScore) {
+    bestScore = score;
+    localStorage.setItem(STORAGE_KEY_BEST, bestScore);
+  }
+  updateStats();
+
+  // Firebase 점수 저장
+  if (SG.FB.isConnected()) {
+    await SG.FB.submitScore(score, { /* TODO: 추가 메타데이터 */ });
+  }
+
+  // Playgama 리더보드
+  if (SG.PG.isAvailable()) {
+    await SG.PG.leaderboard.submit(score);
+  }
+
+  // 게임오버 오버레이
+  document.getElementById('go-score').textContent = score.toLocaleString();
+  document.getElementById('ol-gameover').classList.remove('hidden');
+
+  // 배너 광고 표시
+  SG.CG.showBanner();
+}
+
+// ── UI 업데이트 ───────────────────────────────────────────────────
+function updateStats() {
+  document.getElementById('stat-score').textContent = score.toLocaleString();
+  document.getElementById('stat-best').textContent  = bestScore.toLocaleString();
+}
+
+// ── 입력 처리 ─────────────────────────────────────────────────────
+canvas.addEventListener('click', function (e) {
+  if (!gameRunning) return;
+  const rect = canvas.getBoundingClientRect();
+  const x = e.clientX - rect.left;
+  const y = e.clientY - rect.top;
+  // TODO: 클릭 처리 로직 작성
+  console.log('canvas click:', x, y);
+});
+
+canvas.addEventListener('touchstart', function (e) {
+  e.preventDefault();
+  const touch = e.touches[0];
+  const rect  = canvas.getBoundingClientRect();
+  const x = touch.clientX - rect.left;
+  const y = touch.clientY - rect.top;
+  // TODO: 터치 처리 로직 작성
+}, { passive: false });
+
+// ── Playgama 오디오/일시정지 훅 ──────────────────────────────────
+// SG.PG 초기화 후 자동으로 호출됩니다.
+// (boot IIFE에서 SG.PG init 완료 후에도 참조 가능하도록 미리 등록)
+SG.PG._onAudioStateChanged = function (isEnabled) {
+  // TODO: isEnabled=false → 뮤트 처리
+  // ex) soundManager.setMuted(!isEnabled);
+};
+SG.PG._onPauseStateChanged = function (isPaused) {
+  // TODO: isPaused=true → 게임 일시정지
+};
+
+// ── DEV BAR ───────────────────────────────────────────────────────
+function devResetAll() {
+  if (!confirm('모든 데이터를 초기화할까요?')) return;
+  // TODO: 초기화할 localStorage 키 추가
+  localStorage.removeItem(STORAGE_KEY_BEST);
+  localStorage.removeItem(STORAGE_KEY_PLAYER);
+  location.reload();
+}
+
+// ── 부팅 IIFE ─────────────────────────────────────────────────────
+(async function boot() {
+  // DEV BAR
+  if (new URLSearchParams(location.search).has('dev') ||
+      localStorage.getItem('sg_dev') === '1') {
+    document.getElementById('dev-bar').style.display = 'flex';
+  }
+
+  // 캔버스 크기 설정
+  resizeCanvas();
+  window.addEventListener('resize', resizeCanvas);
+
+  // 로딩 시작 알림
+  SG.CG.loadingStart();
+
+  // SDK 초기화
+  if (window.bridge && typeof window.bridge.initialize === 'function') {
+    await SG.PG.init();
+  } else {
+    await SG.CG.init();
+    if (!SG.CG.isAvailable() && SG.PG) {
+      await SG.PG.init();
+    }
+  }
+
+  // Firebase
+  await SG.FB.init();
+
+  // 배너 광고 (시작 화면)
+  SG.CG.showBanner();
+
+  // 로딩 완료
+  SG.CG.loadingStop();
+
+  // 초기 UI
+  updateStats();
+
+})().catch(function (e) {
+  console.error('[boot] failed:', e);
+  if (SG.Notify) SG.Notify.error('SDK_INIT');
+});
+</script>
+
+</body>
+</html>

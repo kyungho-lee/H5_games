@@ -225,16 +225,11 @@
             try { _bridge.advertisement.off(evInter, onState); } catch (e) {}
             finish();
           }
-          // mock 모드: failed 후 리스너 재등록 — QA의 closed 주입 확실히 수신
-          // 실서버: failed 즉시 종료
+          // failed → 즉시 종료 (인터스티셜은 보상 없으므로 closed 대기 불필요)
+          // mock에서도 재등록 없이 바로 resolve — 리워드 슬롯과 충돌 방지
           if (state === 'failed') {
-            if (isMock) {
-              try { _bridge.advertisement.off(evInter, onState); } catch (e) {}
-              try { _bridge.advertisement.on(evInter, onState);  } catch (e) {}
-            } else {
-              try { _bridge.advertisement.off(evInter, onState); } catch (e) {}
-              finish();
-            }
+            try { _bridge.advertisement.off(evInter, onState); } catch (e) {}
+            finish();
           }
         }
 
@@ -243,8 +238,8 @@
                       || 'interstitialStateChanged';
         _bridge.advertisement.on(evInter, onState);
 
-        // mock 모드: 3초 (인터스티셜은 빠르게 통과, QA 타이밍 블록 방지) / 실서버: 15초
-        var _interTimeout = isMock ? 3000 : 15000;
+        // mock: failed 즉시 종료 → 타임아웃은 백업용 (1초) / 실서버: 15초
+        var _interTimeout = isMock ? 1000 : 15000;
         timeout = setTimeout(function () {
           try { _bridge.advertisement.off(evInter, onState); } catch (e) {}
           finish();

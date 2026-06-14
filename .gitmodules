@@ -1,3 +1,7 @@
 [submodule "H5-PUZZLE-NeonDrift-v1"]
 	path = H5-PUZZLE-NeonDrift-v1
 	url = https://github.com/kyungho-lee/H5-PUZZLE-NeonDrift-v1.git
+
+[submodule "samegame-grid-protocol"]
+	path = samegame-grid-protocol
+	url = https://github.com/kyungho-lee/H5_games.git

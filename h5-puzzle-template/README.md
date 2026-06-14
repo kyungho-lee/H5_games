@@ -18,6 +18,18 @@ h5-puzzle-template/
 │   ├── firebase-config.js        ← Firebase 프로젝트 키 입력
 │   ├── notify.js                 ← 토스트 알림 (수정 불필요)
 │   └── sound.js                  ← Web Audio 8-bit 사운드 (음표 배열 교체)
+├── scripts/                      ← 제출용 에셋 생성 (배포 제외)
+│   ├── make-screenshots.mjs      ← Playwright 스크린샷 자동화 (5컷)
+│   ├── make-cover.mjs            ← 커버 이미지 생성 (3사이즈)
+│   └── _submit/                  ← 생성된 에셋 출력 디렉토리
+│       ├── ss-01-menu.png
+│       ├── ss-02-gameplay.png
+│       ├── ss-03-mode2.png
+│       ├── ss-04-gameover.png
+│       ├── ss-05-fx.png
+│       ├── cover-square.png      (800×800)
+│       ├── cover-portrait.png    (1080×1920)
+│       └── cover-landscape.png   (1920×1080)
 ├── docs/
 │   ├── todo.md                   ← 단계별 구현 체크리스트 ← 여기서 시작
 │   ├── ad-patterns.md            ← 광고 연동 패턴 레퍼런스
@@ -26,8 +38,10 @@ h5-puzzle-template/
 ├── .claude/
 │   ├── settings.local.json       ← Claude Code 권한 설정
 │   └── skills/
-│       └── playgama-ad-integration/
-│           └── SKILL.md          ← Playgama 광고 연동 Claude 스킬
+│       ├── playgama-ad-integration/
+│       │   └── SKILL.md          ← Playgama 광고 연동 스킬
+│       └── playgama-submission/
+│           └── SKILL.md          ← 제출 에셋 생성 + 체크리스트 스킬
 └── README.md
 ```
 
@@ -53,9 +67,15 @@ python -m http.server 3000
 ### 3. Playgama 배포 zip 생성
 
 ```powershell
-$files = Get-ChildItem -Path src -File | ForEach-Object { $_.FullName }
-Compress-Archive -Path $files -DestinationPath game.zip -CompressionLevel Optimal
+# src/ 전체를 루트에 flat 압축 (서브디렉토리 포함)
+$src = 'src'
+$out = 'game.zip'
+if (Test-Path $out) { Remove-Item -Path $out -Force }
+Compress-Archive -Path "$src\*" -DestinationPath $out -CompressionLevel Optimal
+Write-Host "✅ game.zip created"
 ```
+
+> **주의**: `Get-ChildItem -File`은 서브디렉토리를 누락시킵니다. `"$src\*"` 패턴을 사용해야 `themes/` 등 하위 폴더가 포함됩니다.
 
 ---
 
@@ -69,6 +89,72 @@ Compress-Archive -Path $files -DestinationPath game.zip -CompressionLevel Optima
 | `src/playgama-bridge-config.json` | rewarded placement ID, 리더보드 ID 교체 |
 | `src/firebase-config.js` | 실제 Firebase 프로젝트 키 입력 |
 | `src/firebase.js` | 컬렉션명 교체, `submitScore()` 필드 추가 |
+
+---
+
+## 제출 에셋 생성
+
+### 전제 조건 (최초 1회)
+
+```bash
+npm install playwright
+npx playwright install chromium
+```
+
+### 스크린샷 5컷
+
+```bash
+node scripts/make-screenshots.mjs
+```
+
+`scripts/make-screenshots.mjs` 상단 `TODO` 주석 위치에서 게임의 공개 함수명으로 교체:
+
+```javascript
+// 게임 시작 함수
+await page.evaluate(() => window.YOUR_START_FN && window.YOUR_START_FN());
+
+// 이동/액션 (예: 타일 슬라이드)
+await page.evaluate(dir => window.doMove && window.doMove(dir), 'left');
+
+// 게임오버 트리거
+await page.evaluate(() => window.YOUR_GAMEOVER_FN && window.YOUR_GAMEOVER_FN());
+```
+
+### 커버 이미지 3종
+
+```bash
+node scripts/make-cover.mjs
+```
+
+`scripts/make-cover.mjs` 상단 `GAME_CONFIG`와 `BLOCKS`를 게임에 맞게 수정:
+
+```javascript
+const GAME_CONFIG = {
+  title:    'YOUR GAME',
+  subtitle: 'MERGE · COLLECT · EVOLVE',
+  slogan:   'DAILY PUZZLE · NEON WORLD',
+  titleColor: '#00e5ff',
+  // ...
+};
+```
+
+자세한 내용: `.claude/skills/playgama-submission/SKILL.md`
+
+---
+
+## 영문 게임 설명 구성
+
+Playgama 대시보드에 입력하는 두 텍스트:
+
+**Game Description** (300–500자)
+1. 한 줄 훅 — 게임의 핵심 루프
+2. 모드/기능 목록
+3. 경제 시스템 한 줄
+
+**How to Play** (200–300자)
+1. Controls — swipe / arrow keys
+2. Merge / scoring 규칙
+3. Tips 2–3줄
 
 ---
 
@@ -123,7 +209,16 @@ SameGame Grid Protocol과 동일한 레트로-퓨처리스틱 테마:
 
 ---
 
+## Claude Skills
+
+| 스킬 | 용도 |
+|------|------|
+| `playgama-ad-integration` | 광고 연동 패턴, QA 체크리스트, 트러블슈팅 |
+| `playgama-submission` | 스크린샷·커버 생성, 영문 설명 가이드, zip 패키징 |
+
+---
+
 ## 참고 프로젝트
 
-SameGame Grid Protocol (`../samegame-grid-protocol/`) — 이 템플릿의 원본.  
-`daily.html` (= `index.html`) 기준으로 QA Tool 검증 완료된 광고 연동 코드가 들어있다.
+- **SameGame Grid Protocol** (`../samegame-grid-protocol/`) — 이 템플릿의 원본.
+- **NeonDrift v1** (`../H5-PUZZLE-NeonDrift-v1/`) — 이 템플릿으로 만든 첫 번째 게임. `scripts/make-screenshots.mjs`와 `make-cover.mjs`의 실제 사용 예시.

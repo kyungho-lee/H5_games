@@ -8,3 +8,6 @@
 [submodule "H5-PUZZLE-EarthBeyond"]
 	path = H5-PUZZLE-EarthBeyond
 	url = https://github.com/kyungho-lee/H5-PUZZLE-EarthBeyond.git
+[submodule "H5-PUZZLE-MOKO"]
+	path = H5-PUZZLE-MOKO
+	url = https://github.com/kyungho-lee/H5-PUZZLE-MOKO.git

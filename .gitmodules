@@ -14,3 +14,6 @@
 [submodule "H5-PUZZLE-BassilsSort"]
 	path = H5-PUZZLE-BassilsSort
 	url = https://github.com/ZENGA-GAMES/H5-PUZZLE-BasilsSort.git
+[submodule "H5-PUZZLE-LittleHaunts"]
+	path = H5-PUZZLE-LittleHaunts
+	url = https://github.com/kyungho-lee/LittleHaunts.git

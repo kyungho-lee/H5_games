@@ -17,3 +17,6 @@
 [submodule "H5-PUZZLE-LittleHaunts"]
 	path = H5-PUZZLE-LittleHaunts
 	url = https://github.com/kyungho-lee/LittleHaunts.git
+[submodule "H5-PUZZLE-MOKO_ch"]
+	path = H5-PUZZLE-MOKO_ch
+	url = https://github.com/kyungho-lee/H5-PUZZLE-MOKO_ch.git
